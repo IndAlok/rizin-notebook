@@ -1,115 +1,179 @@
+/// \file server_assets.go
+/// \brief Template loading (embedded/debug), custom Gin HTMLRender, static serving.
+
 package main
 
 import (
 	"embed"
 	"encoding/json"
-	"fmt"
-	"github.com/gin-gonic/gin"
 	"html/template"
+	"io"
 	"io/fs"
 	"net/http"
-	"path"
+	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/render"
 )
 
-//go:embed assets/*
-var Assets embed.FS
+//go:embed assets/templates/*
+var embedTemplates embed.FS
 
+//go:embed assets/static/*
+var embedStatic embed.FS
+
+// Template helper functions: OutputToHtml, OutputToCsv, raw, stringify.
 var functionMap = template.FuncMap{
-	"raw": func(b []byte) template.HTML {
-		return template.HTML(b)
+	"OutputToHtml": toHtml,
+	"OutputToCsv":  toCsv,
+	"raw": func(s string) template.HTML {
+		return template.HTML(s)
 	},
-	"stringify": func(input interface{}) string {
-		buffer, err := json.Marshal(input)
+	"stringify": func(v interface{}) string {
+		bytes, err := json.Marshal(v)
 		if err != nil {
-			return `""`
+			return "{}"
 		}
-		return string(buffer)
-	},
-	"keycombo": func(input string) string {
-		if len(input) > 0 {
-			return strings.Replace(input, ",", " + ", -1)
-		}
-		return "Not Assigned"
+		return string(bytes)
 	},
 }
 
-func loadEmbedded() (*template.Template, error) {
-	t := template.New("")
-	fs.WalkDir(Assets, ".", func(filePath string, file fs.DirEntry, err error) error {
-		if file.IsDir() || !strings.HasSuffix(file.Name(), ".tmpl") {
+/* ─── Custom template render ─────────────────────────────── */
+
+/// \brief Custom Gin HTMLRender wrapping a compiled template set with FuncMap.
+type customHTMLRender struct {
+	Template *template.Template
+}
+
+func (r *customHTMLRender) Instance(name string, data interface{}) render.Render {
+	return &customHTMLRenderInstance{
+		Template: r.Template,
+		Name:     name,
+		Data:     data,
+	}
+}
+
+/// \brief Single template render instance.
+type customHTMLRenderInstance struct {
+	Template *template.Template
+	Name     string
+	Data     interface{}
+}
+
+func (r *customHTMLRenderInstance) Render(w http.ResponseWriter) error {
+	r.WriteContentType(w)
+	return r.Template.ExecuteTemplate(w, r.Name, r.Data)
+}
+
+func (r *customHTMLRenderInstance) WriteContentType(w http.ResponseWriter) {
+	header := w.Header()
+	if val := header["Content-Type"]; len(val) == 0 {
+		header["Content-Type"] = []string{"text/html; charset=utf-8"}
+	}
+}
+
+/* ─── Template loading ───────────────────────────────────── */
+
+/// \brief Loads templates from embedded FS or debug directory.
+func setupTemplate(assets string, router *gin.Engine) (http.FileSystem, *template.Template) {
+	if len(assets) > 0 {
+		return setupTemplateDebug(assets, router)
+	}
+	return setupTemplateEmbed(router)
+}
+
+func setupTemplateEmbed(router *gin.Engine) (http.FileSystem, *template.Template) {
+	tmpl := template.New("").Funcs(functionMap)
+
+	err := fs.WalkDir(embedTemplates, "assets/templates", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".tmpl") {
 			return nil
 		}
-
-		h, _ := Assets.ReadFile(filePath)
-		t, err = t.New(file.Name()).Funcs(functionMap).Parse(string(h))
-		return err
-	})
-	return t, nil
-}
-
-func loadAsset(file string) ([]byte, error) {
-	file = path.Base(file)
-	return Assets.ReadFile("assets/static/" + file)
-}
-
-func setupTemplate(assets string, router *gin.Engine) (string, string) {
-	var static, templates string
-	if len(assets) > 0 {
-		fmt.Println("debugging assets.")
-		static = path.Join(assets, "static")
-		templates = path.Join(assets, "templates", "*")
-		router.SetFuncMap(functionMap)
-		router.LoadHTMLGlob(templates)
-	} else {
-		templates, err := loadEmbedded()
-		if err != nil {
-			panic(err)
+		data, readErr := embedTemplates.ReadFile(path)
+		if readErr != nil {
+			return readErr
 		}
-		router.SetHTMLTemplate(templates)
+		name := filepath.Base(path)
+		_, parseErr := tmpl.New(name).Parse(string(data))
+		return parseErr
+	})
+	if err != nil {
+		panic("failed to load embedded templates: " + err.Error())
 	}
-	return static, templates
+
+	router.HTMLRender = &customHTMLRender{Template: tmpl}
+
+	staticFS, fsErr := fs.Sub(embedStatic, "assets/static")
+	if fsErr != nil {
+		panic("failed to load embedded static assets: " + fsErr.Error())
+	}
+	return http.FS(staticFS), tmpl
 }
 
-func serverAddAssets(root *gin.RouterGroup, assets, static, templates string) {
-	if len(assets) > 0 {
-		root.GET("/favicon.ico", func(c *gin.Context) {
-			c.Redirect(302, "/static/favicon.ico")
-		})
-		root.Static("/static", static)
-	} else {
-		root.GET("/favicon.ico", func(c *gin.Context) {
-			content, err := loadAsset("favicon.ico")
-			if content == nil && err == nil {
-				c.Status(404)
-				return
-			} else if err != nil {
-				c.Status(500)
-				fmt.Println("[Assets]", err)
-				return
-			}
-			c.Data(200, "image/x-icon", content)
-		})
-		root.GET("/static/:file", func(c *gin.Context) {
-			file := c.Param("file")
-			content, err := loadAsset(file)
-			if content == nil && err == nil {
-				c.Status(404)
-				return
-			} else if err != nil {
-				c.Status(500)
-				fmt.Println("[Assets]", err)
-				return
-			}
-			var contentType = "text/plain"
-			if strings.HasSuffix(file, ".css") {
-				contentType = "text/css"
-			} else if strings.HasSuffix(file, ".js") {
-				contentType = "text/javascript"
-			} else {
-				contentType = http.DetectContentType(content)
-			}
-			c.Data(200, contentType, content)
-		})
+func setupTemplateDebug(assets string, router *gin.Engine) (http.FileSystem, *template.Template) {
+	tmpl := template.New("").Funcs(functionMap)
+	templateDir := filepath.Join(assets, "templates")
+
+	err := filepath.Walk(templateDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !strings.HasSuffix(path, ".tmpl") {
+			return nil
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		name := filepath.Base(path)
+		_, parseErr := tmpl.New(name).Parse(string(data))
+		return parseErr
+	})
+	if err != nil {
+		panic("failed to load debug templates: " + err.Error())
 	}
+
+	router.HTMLRender = &customHTMLRender{Template: tmpl}
+
+	staticDir := filepath.Join(assets, "static")
+	return http.Dir(staticDir), tmpl
+}
+
+/* ─── Static file routes ─────────────────────────────────── */
+
+/// \brief Serves static files and provides debug template reload endpoint.
+func serverAddAssets(root *gin.RouterGroup, assets string, static http.FileSystem, templates *template.Template) {
+	root.StaticFS("/static", static)
+	root.GET("/favicon.ico", func(c *gin.Context) {
+		c.Writer.WriteHeader(http.StatusNoContent)
+		_, _ = io.WriteString(c.Writer, "")
+	})
+
+	root.GET("/reload", func(c *gin.Context) {
+		if len(assets) > 0 {
+			templateDir := filepath.Join(assets, "templates")
+			newTmpl := template.New("").Funcs(functionMap)
+			_ = filepath.Walk(templateDir, func(path string, info os.FileInfo, err error) error {
+				if err != nil || info.IsDir() || !strings.HasSuffix(path, ".tmpl") {
+					return err
+				}
+				data, readErr := os.ReadFile(path)
+				if readErr != nil {
+					return readErr
+				}
+				name := filepath.Base(path)
+				_, parseErr := newTmpl.New(name).Parse(string(data))
+				return parseErr
+			})
+			templates = newTmpl
+		}
+		c.HTML(200, "reload.tmpl", gin.H{
+			"root": webroot,
+		})
+	})
 }

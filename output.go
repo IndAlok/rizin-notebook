@@ -1,3 +1,6 @@
+/// \file output.go
+/// \brief ANSI-to-HTML conversion and CSV table rendering.
+
 package main
 
 import (
@@ -10,6 +13,7 @@ import (
 	"strings"
 )
 
+// tagMap maps ANSI SGR attribute codes to their HTML tag equivalents.
 var tagMap = map[string]string{
 	"1": "b",
 	"2": "b",
@@ -19,19 +23,21 @@ var tagMap = map[string]string{
 	"9": "strike",
 }
 
+// colMap maps ANSI 8-color codes to hex color values optimized for dark backgrounds.
 var colMap = map[string]string{
-	"0": "white",
-	"1": "red",
-	"2": "green",
-	"3": "yellow",
-	"4": "blue",
-	"5": "magenta",
-	"6": "cyan",
-	"7": "black",
-	"9": "white",
+	"0": "#555555",
+	"1": "#e06c75",
+	"2": "#98c379",
+	"3": "#e5c07b",
+	"4": "#61afef",
+	"5": "#c678dd",
+	"6": "#56b6c2",
+	"7": "#abb2bf",
+	"9": "#d4d4d4",
 }
 
-var color265 = map[string]string{
+// color256 maps ANSI 256-color palette indices to hex color codes.
+var color256 = map[string]string{
 	"0":   "#000000",
 	"1":   "#800000",
 	"2":   "#008000",
@@ -290,67 +296,95 @@ var color265 = map[string]string{
 	"255": "#eeeeee",
 }
 
-var col256 = regexp.MustCompile(`^\[([34]8);5;(\d+)m`)
-var colrgb = regexp.MustCompile(`^\[([34]8|1);2;(\d+);(\d+);(\d+)m`)
-var escape = regexp.MustCompile(`^\[(;?\d+)+([A-Za-z])`)
+// Precompiled regular expressions for ANSI escape sequence parsing.
+var (
+	// col256Re matches 256-color ANSI escape sequences: ESC[38;5;Nm or ESC[48;5;Nm.
+	col256Re = regexp.MustCompile(`^\[([34]8);5;(\d+)m`)
 
+	// colRGBRe matches RGB true color ANSI escape sequences: ESC[38;2;R;G;Bm.
+	colRGBRe = regexp.MustCompile(`^\[([34]8|1);2;(\d+);(\d+);(\d+)m`)
+
+	// escapeRe matches generic ANSI escape sequences with numeric parameters.
+	escapeRe = regexp.MustCompile(`^\[(;?\d+)+([A-Za-z])`)
+)
+
+/// \brief Strips null bytes and \r from raw Rizin output.
 func fromRawToString(raw []byte) string {
-	var output = strings.TrimSuffix(string(raw), "\x00")
+	output := strings.TrimSuffix(string(raw), "\x00")
 	output = strings.ReplaceAll(output, "\r", "")
 	return strings.Trim(output, "\n")
 }
 
-func toCsv(output string) ([]byte, bool) {
+/// \brief Parses output as CSV and renders as HTML table (≥2 columns required).
+func toCsv(output string) ([]byte, error) {
 	reader := csv.NewReader(strings.NewReader(output))
 	reader.Comma = ','
 
-	var htmlStr = "<table>\n"
+	var sb strings.Builder
+	sb.WriteString("<table>\n")
+
 	for i := 0; ; i++ {
 		record, err := reader.Read()
 		if err == io.EOF {
 			break
-		} else if err != nil || (i == 0 && len(record) < 2) {
-			return nil, false
+		}
+		if err != nil {
+			return nil, err
+		}
+		if i == 0 && len(record) < 2 {
+			return nil, fmt.Errorf("CSV requires at least 2 columns, got %d", len(record))
 		}
 
-		htmlStr += "<tr>"
+		sb.WriteString("<tr>")
 		for _, elem := range record {
-			htmlStr += "\n<td>"
-			htmlStr += html.EscapeString(elem)
-			htmlStr += "</td>"
+			sb.WriteString("\n<td>")
+			sb.WriteString(html.EscapeString(elem))
+			sb.WriteString("</td>")
 		}
-		htmlStr += "\n</tr>\n"
+		sb.WriteString("\n</tr>\n")
 	}
 
-	htmlStr += "</table>"
-	return []byte(htmlStr), true
+	sb.WriteString("</table>")
+	return []byte(sb.String()), nil
 }
 
+/// \brief Converts ANSI escape-encoded text to styled HTML (16/256/RGB color, attributes).
 func toHtml(output string) []byte {
 	if output == "" {
 		return []byte{}
 	}
+
+	// HTML-escape the raw text first.
 	output = strings.ReplaceAll(output, "&", "&amp;")
 	output = strings.ReplaceAll(output, "<", "&lt;")
 	output = strings.ReplaceAll(output, ">", "&gt;")
 	output = strings.ReplaceAll(output, "\"", "&quot;")
 	output = strings.ReplaceAll(output, "'", "&apos;")
-	var htmlStr = ""
+
+	var sb strings.Builder
 	tokens := strings.Split(output, "\x1b")
+
 	for _, token := range tokens {
 		if token == "" {
 			continue
 		}
 
+		// Handle cursor control and screen-clearing codes (strip them).
 		if strings.HasPrefix(token, "[H") ||
 			strings.HasPrefix(token, "[s") ||
 			strings.HasPrefix(token, "[u") ||
 			strings.HasPrefix(token, "[J") ||
 			strings.HasPrefix(token, "[K") {
-			htmlStr += token[2:]
-		} else if strings.HasPrefix(token, "[#;#R") {
-			htmlStr += token[5:]
-		} else if strings.HasPrefix(token, "[#") ||
+			sb.WriteString(token[2:])
+			continue
+		}
+
+		if strings.HasPrefix(token, "[#;#R") {
+			sb.WriteString(token[5:])
+			continue
+		}
+
+		if strings.HasPrefix(token, "[#") ||
 			strings.HasPrefix(token, "[0m") ||
 			strings.HasPrefix(token, "[0J") ||
 			strings.HasPrefix(token, "[1J") ||
@@ -359,128 +393,156 @@ func toHtml(output string) []byte {
 			strings.HasPrefix(token, "[1K") ||
 			strings.HasPrefix(token, "[2K") ||
 			strings.HasPrefix(token, "[6n") {
-			htmlStr += token[3:]
-		} else if strings.HasPrefix(token, "[1m") ||
-			strings.HasPrefix(token, "[2m") {
-			htmlStr += "<b>"
-			htmlStr += token[3:]
-			htmlStr += "</b>"
-		} else if strings.HasPrefix(token, "[3m") {
-			htmlStr += "<i>"
-			htmlStr += token[3:]
-			htmlStr += "</i>"
-		} else if strings.HasPrefix(token, "[4m") {
-			htmlStr += "<ins>"
-			htmlStr += token[3:]
-			htmlStr += "</ins>"
-		} else if strings.HasPrefix(token, "[5m") {
-			htmlStr += "<blink>"
-			htmlStr += token[3:]
-			htmlStr += "</blink>"
-		} else if strings.HasPrefix(token, "[7m") ||
-			strings.HasPrefix(token, "[8m") {
-			htmlStr += token[3:]
-		} else if strings.HasPrefix(token, "[9m") {
-			htmlStr += "<strike>"
-			htmlStr += token[3:]
-			htmlStr += "</strike>"
-		} else if strings.HasPrefix(token, "[22m") ||
+			sb.WriteString(token[3:])
+			continue
+		}
+
+		// Handle individual SGR attribute codes.
+		if strings.HasPrefix(token, "[1m") || strings.HasPrefix(token, "[2m") {
+			sb.WriteString("<b>")
+			sb.WriteString(token[3:])
+			sb.WriteString("</b>")
+			continue
+		}
+		if strings.HasPrefix(token, "[3m") {
+			sb.WriteString("<i>")
+			sb.WriteString(token[3:])
+			sb.WriteString("</i>")
+			continue
+		}
+		if strings.HasPrefix(token, "[4m") {
+			sb.WriteString("<ins>")
+			sb.WriteString(token[3:])
+			sb.WriteString("</ins>")
+			continue
+		}
+		if strings.HasPrefix(token, "[5m") {
+			sb.WriteString("<blink>")
+			sb.WriteString(token[3:])
+			sb.WriteString("</blink>")
+			continue
+		}
+		if strings.HasPrefix(token, "[7m") || strings.HasPrefix(token, "[8m") {
+			sb.WriteString(token[3:])
+			continue
+		}
+		if strings.HasPrefix(token, "[9m") {
+			sb.WriteString("<strike>")
+			sb.WriteString(token[3:])
+			sb.WriteString("</strike>")
+			continue
+		}
+
+		// Handle SGR reset codes (22m-29m).
+		if strings.HasPrefix(token, "[22m") ||
 			strings.HasPrefix(token, "[23m") ||
 			strings.HasPrefix(token, "[24m") ||
 			strings.HasPrefix(token, "[25m") ||
-			strings.HasPrefix(token, "[28m") ||
 			strings.HasPrefix(token, "[27m") ||
+			strings.HasPrefix(token, "[28m") ||
 			strings.HasPrefix(token, "[29m") {
-			htmlStr += token[4:]
-		} else if token == "7" || token == "8" {
-			htmlStr += token[1:]
-		} else {
-			var btok = []byte(token)
-			var found = col256.FindSubmatch(btok)
-			if len(found) == 3 {
-				if len(token) == len(found[0]) {
-					continue
-				}
-				color, ok := color265[string(found[2])]
-				if ok {
-					if string(found[1]) == "48" {
-						htmlStr += fmt.Sprintf("<span style=\"background-color: %s\">", color)
-					} else {
-						htmlStr += fmt.Sprintf("<span style=\"color: %s\">", color)
-					}
-				}
-				htmlStr += token[len(found[0]):]
-				if ok {
-					htmlStr += "</span>"
-				}
-				continue
-			}
-
-			found = colrgb.FindSubmatch(btok)
-			if len(found) == 5 {
-				if len(token) == len(found[0]) {
-					continue
-				}
-				r, _ := strconv.Atoi(string(found[2]))
-				g, _ := strconv.Atoi(string(found[3]))
-				b, _ := strconv.Atoi(string(found[4]))
-				r &= 0xFF
-				g &= 0xFF
-				b &= 0xFF
-				if string(found[1]) == "48" {
-					htmlStr += fmt.Sprintf("<span style=\"background-color: #%02x%02x%02x\">", r, g, b)
-				} else {
-					htmlStr += fmt.Sprintf("<span style=\"color: #%02x%02x%02x\">", r, g, b)
-				}
-				htmlStr += token[len(found[0]):]
-				htmlStr += "</span>"
-				continue
-			}
-
-			found = escape.FindSubmatch(btok)
-			if len(found) < 1 {
-				htmlStr += token
-				continue
-			} else if string(found[len(found)-1]) != "m" {
-				htmlStr += token[len(found[0]):]
-				continue
-			} else if len(token) == len(found[0]) {
-				continue
-			}
-			var tags = ""
-			for _, e := range found {
-				e := string(e)
-				if len(e) < 1 {
-					continue
-				}
-				if e[len(e)-1] == ';' {
-					e = e[:len(e)-1]
-				}
-				if e == "0" {
-					htmlStr += tags
-					tags = ""
-					continue
-				} else if tag, ok := tagMap[e]; ok {
-					htmlStr += fmt.Sprintf("<%s>", tag)
-					tags += fmt.Sprintf("</%s>", tag)
-				} else if len(e) == 2 && (e[0] == '3' || e[0] == '4' || e[0] == '9') && e[1] != '8' {
-					color, _ := colMap[string(e[1])]
-					if e[0] == '4' {
-						htmlStr += fmt.Sprintf("<span style=\"background-color: %s\">", color)
-					} else {
-						htmlStr += fmt.Sprintf("<span style=\"color: %s\">", color)
-					}
-					tags += "</span>"
-				} else if len(e) == 3 && e[0] == '1' && e[1] == '0' && e[2] != '8' {
-					color, _ := colMap[string(e[1])]
-					htmlStr += fmt.Sprintf("<span style=\"background-color: %s\">", color)
-					tags += "</span>"
-				}
-			}
-			htmlStr += token[len(found[0]):]
-			htmlStr += tags
+			sb.WriteString(token[4:])
+			continue
 		}
+
+		if token == "7" || token == "8" {
+			sb.WriteString(token[1:])
+			continue
+		}
+
+		// Try 256-color match.
+		btok := []byte(token)
+		found := col256Re.FindSubmatch(btok)
+		if len(found) == 3 {
+			if len(token) == len(found[0]) {
+				continue
+			}
+			hexColor, ok := color256[string(found[2])]
+			if ok {
+				if string(found[1]) == "48" {
+					sb.WriteString(fmt.Sprintf("<span style=\"background-color: %s\">", hexColor))
+				} else {
+					sb.WriteString(fmt.Sprintf("<span style=\"color: %s\">", hexColor))
+				}
+			}
+			sb.WriteString(token[len(found[0]):])
+			if ok {
+				sb.WriteString("</span>")
+			}
+			continue
+		}
+
+		// Try RGB true color match.
+		found = colRGBRe.FindSubmatch(btok)
+		if len(found) == 5 {
+			if len(token) == len(found[0]) {
+				continue
+			}
+			r, _ := strconv.Atoi(string(found[2]))
+			g, _ := strconv.Atoi(string(found[3]))
+			b, _ := strconv.Atoi(string(found[4]))
+			r &= 0xFF
+			g &= 0xFF
+			b &= 0xFF
+			if string(found[1]) == "48" {
+				sb.WriteString(fmt.Sprintf("<span style=\"background-color: #%02x%02x%02x\">", r, g, b))
+			} else {
+				sb.WriteString(fmt.Sprintf("<span style=\"color: #%02x%02x%02x\">", r, g, b))
+			}
+			sb.WriteString(token[len(found[0]):])
+			sb.WriteString("</span>")
+			continue
+		}
+
+		// Try generic escape sequence match.
+		found = escapeRe.FindSubmatch(btok)
+		if len(found) < 1 {
+			sb.WriteString(token)
+			continue
+		}
+		if string(found[len(found)-1]) != "m" {
+			sb.WriteString(token[len(found[0]):])
+			continue
+		}
+		if len(token) == len(found[0]) {
+			continue
+		}
+
+		var tags strings.Builder
+		for _, e := range found {
+			es := string(e)
+			if len(es) < 1 {
+				continue
+			}
+			if es[len(es)-1] == ';' {
+				es = es[:len(es)-1]
+			}
+			if es == "0" {
+				sb.WriteString(tags.String())
+				tags.Reset()
+				continue
+			}
+			if tag, ok := tagMap[es]; ok {
+				sb.WriteString(fmt.Sprintf("<%s>", tag))
+				tags.WriteString(fmt.Sprintf("</%s>", tag))
+			} else if len(es) == 2 && (es[0] == '3' || es[0] == '4' || es[0] == '9') && es[1] != '8' {
+				clr, _ := colMap[string(es[1])]
+				if es[0] == '4' {
+					sb.WriteString(fmt.Sprintf("<span style=\"background-color: %s\">", clr))
+				} else {
+					sb.WriteString(fmt.Sprintf("<span style=\"color: %s\">", clr))
+				}
+				tags.WriteString("</span>")
+			} else if len(es) == 3 && es[0] == '1' && es[1] == '0' && es[2] != '8' {
+				clr, _ := colMap[string(es[1])]
+				sb.WriteString(fmt.Sprintf("<span style=\"background-color: %s\">", clr))
+				tags.WriteString("</span>")
+			}
+		}
+		sb.WriteString(token[len(found[0]):])
+		sb.WriteString(tags.String())
 	}
-	htmlStr = strings.ReplaceAll(htmlStr, "\n", "<br>\n")
-	return []byte("<pre>" + htmlStr + "</pre>")
+
+	result := strings.ReplaceAll(sb.String(), "\n", "<br>\n")
+	return []byte("<pre>" + result + "</pre>")
 }

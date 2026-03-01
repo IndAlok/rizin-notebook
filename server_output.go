@@ -1,186 +1,206 @@
+/// \file server_output.go
+/// \brief Command/script execution and output cell handlers.
+
 package main
 
 import (
-	"fmt"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
-	"strings"
 )
 
 func serverAddOutput(output *gin.RouterGroup) {
-	output.GET("/deleted", func(c *gin.Context) {
-		c.String(200, "deleted.")
-	})
-	output.GET("/loaded", func(c *gin.Context) {
-		c.String(200, "found.")
-	})
-	output.POST("/script/:unique", func(c *gin.Context) {
-		unique := c.Param("unique")
-		script := c.DefaultPostForm("script", "")
-		if !IsValidNonce(unique) || len(script) < 1 {
-			c.HTML(400, "console-error.tmpl", gin.H{
-				"error": "invalid request",
+
+	// View a rendered output cell.
+	output.GET("/view/*path", func(c *gin.Context) {
+		unique, eunique, ok := parseElementPath(c.Param("path"))
+		if !ok {
+			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
 				"root":  webroot,
+				"error": "invalid path",
 			})
 			return
 		}
 
-		section := notebook.newscript(unique, script)
-		if len(section) < 1 {
-			c.HTML(400, "console-error.tmpl", gin.H{
-				"error": "cannot create section for output.",
-				"root":  webroot,
-			})
-			return
-		}
-
-		rizin := notebook.open(unique, false)
-		jsvm := notebook.jsvm
-		go func(unique, name, script string, jsvm *JavaScript, rizin *Rizin) {
-			output, err := jsvm.exec(script, rizin)
-			if err != nil {
-				errstr := strings.Replace(err.Error(), " at main.NewJavaScript.func1 (native)", "", 1)
-				output += "\nException: " + errstr
-			}
-			notebook.save([]byte(output), unique, name+".out")
-		}(unique, section, script, jsvm, rizin)
-
-		c.Redirect(302, webroot+"output/check/"+unique+"/"+section)
-	})
-	output.POST("/exec/:unique", func(c *gin.Context) {
-		unique := c.Param("unique")
-		command := c.DefaultPostForm("command", "")
-		if !IsValidNonce(unique) || len(command) < 1 {
-			c.HTML(400, "console-error.tmpl", gin.H{
-				"error": "invalid request",
-				"root":  webroot,
-			})
-			return
-		}
-
-		rizin := notebook.open(unique, false)
-		if rizin == nil {
-			c.HTML(400, "console-error.tmpl", gin.H{
-				"error": "pipe is closed.",
-				"root":  webroot,
-			})
-			return
-		}
-
-		section := notebook.newcmd(unique, command)
-		if len(section) < 1 {
-			c.HTML(400, "console-error.tmpl", gin.H{
-				"error": "cannot create section for output.",
-				"root":  webroot,
-			})
-			return
-		}
-
-		go func(unique, name, command string, rizin *Rizin) {
-			output, err := rizin.exec(command)
-			if err != nil {
-				output = fmt.Sprintf("pipe error: %v", err)
-			}
-			notebook.save([]byte(output), unique, name+".out")
-		}(unique, section, command, rizin)
-
-		c.Redirect(302, webroot+"output/check/"+unique+"/"+section)
-	})
-	output.GET("/check/*path", func(c *gin.Context) {
-		tokens := strings.Split(c.Param("path")[1:], "/")
-		if len(tokens) != 2 || !IsValidNonce(tokens[0]) || !IsValidNonce(tokens[1]) {
-			c.HTML(400, "error.tmpl", gin.H{
-				"root":  webroot,
-				"error": "invalid request",
-			})
-			return
-		}
-
-		_, err := notebook.file(tokens[0], tokens[1]+".out")
+		data, err := notebook.file(unique, eunique+".out")
 		if err != nil {
-			c.HTML(200, "reload.tmpl", gin.H{
-				"root": webroot,
+			data = []byte("")
+		}
+
+		// Convert ANSI escape sequences to HTML.
+		htmlOutput := toHtml(string(data))
+
+		c.HTML(200, "output.tmpl", gin.H{
+			"root":   webroot,
+			"output": string(htmlOutput),
+		})
+	})
+
+	// Delete an output cell.
+	output.GET("/delete/*path", func(c *gin.Context) {
+		unique, eunique, ok := parseElementPath(c.Param("path"))
+		if !ok {
+			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
+				"root":  webroot,
+				"error": "invalid path",
 			})
 			return
 		}
 
-		c.Redirect(302, webroot+"output/loaded")
+		notebook.deleteElem(unique, eunique, false)
+
+		c.Redirect(http.StatusFound, webroot+"output/deleted")
 	})
+
+	// Command line input form (rendered in an iframe).
+	output.GET("/input/console/:unique", func(c *gin.Context) {
+		unique := c.Param("unique")
+		if !IsValidNonce(unique, PageNonceSize) {
+			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
+				"root":  webroot,
+				"error": "invalid page identifier",
+			})
+			return
+		}
+
+		c.HTML(200, "console.tmpl", gin.H{
+			"root":   webroot,
+			"unique": unique,
+		})
+	})
+
+	// Script editor input form (rendered in an iframe).
 	output.GET("/input/script/:unique", func(c *gin.Context) {
 		unique := c.Param("unique")
-		if !IsValidNonce(unique) {
-			c.HTML(400, "error.tmpl", gin.H{
+		if !IsValidNonce(unique, PageNonceSize) {
+			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
 				"root":  webroot,
-				"error": "invalid request",
+				"error": "invalid page identifier",
 			})
 			return
 		}
 
 		c.HTML(200, "script.tmpl", gin.H{
-			"unique": unique,
 			"root":   webroot,
+			"unique": unique,
 		})
 	})
-	output.GET("/input/console/:unique", func(c *gin.Context) {
+
+	// Execute a Rizin command.
+	output.POST("/exec/:unique", func(c *gin.Context) {
 		unique := c.Param("unique")
-		if !IsValidNonce(unique) {
-			c.HTML(400, "error.tmpl", gin.H{
+		if !IsValidNonce(unique, PageNonceSize) {
+			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
 				"root":  webroot,
-				"error": "invalid request",
-			})
-			return
-		}
-		c.HTML(200, "console.tmpl", gin.H{
-			"unique": unique,
-			"root":   webroot,
-		})
-	})
-	output.GET("/view/*path", func(c *gin.Context) {
-		tokens := strings.Split(c.Param("path")[1:], "/")
-		if len(tokens) != 2 || !IsValidNonce(tokens[0]) || !IsValidNonce(tokens[1]) {
-			c.HTML(400, "output.tmpl", gin.H{
-				"root":   webroot,
-				"output": []byte("invalid request"),
+				"error": "invalid page identifier",
 			})
 			return
 		}
 
-		bytes, err := notebook.file(tokens[0], tokens[1]+".out")
+		command := c.PostForm("command")
+		if command == "" {
+			c.Redirect(http.StatusFound, webroot+"output/deleted")
+			return
+		}
+
+		// Get or open the pipe.
+		rz := notebook.open(unique, true)
+		if rz == nil {
+			c.HTML(http.StatusInternalServerError, "console-error.tmpl", gin.H{
+				"root":  webroot,
+				"error": "Failed to open Rizin pipe",
+			})
+			return
+		}
+
+		// Execute the command.
+		result, err := rz.exec(command)
 		if err != nil {
-			c.HTML(404, "output.tmpl", gin.H{
-				"root":   webroot,
-				"output": []byte("missing output file"),
-			})
-			return
-		}
-
-		outputStr := fromRawToString(bytes)
-		output, ok := toCsv(outputStr)
-		if !ok {
-			output = toHtml(outputStr)
-		}
-
-		c.HTML(200, "output.tmpl", gin.H{
-			"root":   webroot,
-			"output": output,
-		})
-	})
-	output.GET("/delete/*path", func(c *gin.Context) {
-		path := c.Param("path")
-		tokens := strings.Split(path[1:], "/")
-		if len(tokens) != 2 || !IsValidNonce(tokens[0]) || !IsValidNonce(tokens[1]) {
-			c.HTML(400, "error.tmpl", gin.H{
+			c.HTML(200, "console-error.tmpl", gin.H{
 				"root":  webroot,
-				"error": "invalid request",
+				"error": err.Error(),
 			})
-			return
-		} else if notebook.deleteElem(tokens[0], tokens[1], false) {
-			c.Redirect(302, webroot+"view/"+tokens[0])
 			return
 		}
 
-		c.HTML(400, "error.tmpl", gin.H{
-			"root":  webroot,
-			"error": "invalid request",
+		// Create a command element and save the output.
+		eunique := notebook.newcmd(unique, command)
+		if eunique == "" {
+			c.HTML(http.StatusInternalServerError, "console-error.tmpl", gin.H{
+				"root":  webroot,
+				"error": "Failed to create command element",
+			})
+			return
+		}
+
+		notebook.save([]byte(result), unique, eunique+".out")
+
+		// Redirect to "loaded" to trigger parent page reload.
+		c.Redirect(http.StatusFound, webroot+"output/loaded")
+	})
+
+	// Execute a JavaScript script.
+	output.POST("/script/:unique", func(c *gin.Context) {
+		unique := c.Param("unique")
+		if !IsValidNonce(unique, PageNonceSize) {
+			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
+				"root":  webroot,
+				"error": "invalid page identifier",
+			})
+			return
+		}
+
+		script := c.PostForm("script")
+		if script == "" {
+			c.Redirect(http.StatusFound, webroot+"output/deleted")
+			return
+		}
+
+		// Get or open the pipe.
+		rz := notebook.open(unique, true)
+
+		// Create a script element.
+		eunique := notebook.newscript(unique, script)
+		if eunique == "" {
+			c.HTML(http.StatusInternalServerError, "console-error.tmpl", gin.H{
+				"root":  webroot,
+				"error": "Failed to create script element",
+			})
+			return
+		}
+
+		// Execute the script. rz may be nil if no pipe is open,
+		// which is handled by the JavaScript engine's rizin.cmd error.
+		result, err := notebook.jsvm.exec(script, rz)
+
+		if err != nil {
+			notebook.save([]byte(err.Error()), unique, eunique+".out")
+			c.HTML(200, "console-error.tmpl", gin.H{
+				"root":  webroot,
+				"error": err.Error(),
+			})
+			return
+		}
+
+		notebook.save([]byte(result), unique, eunique+".out")
+
+		// Redirect to "loaded" to trigger parent page reload.
+		c.Redirect(http.StatusFound, webroot+"output/loaded")
+	})
+
+	// Pseudo-page for iframe deletion detection.
+	// When the iframe navigates here, the parent page's output() handler
+	// removes the iframe's container div from the DOM.
+	output.GET("/deleted", func(c *gin.Context) {
+		c.String(200, "deleted")
+	})
+
+	// Pseudo-page for parent page reload trigger.
+	// When the iframe navigates here, the parent page's output() handler
+	// calls location.reload() to refresh the entire page.
+	output.GET("/loaded", func(c *gin.Context) {
+		c.HTML(200, "reload.tmpl", gin.H{
+			"root": webroot,
 		})
 	})
 }

@@ -1,77 +1,84 @@
+/// \file server_settings.go
+/// \brief Settings handlers (environment variables).
+
 package main
 
 import (
-	"github.com/gin-gonic/gin"
+	"net/http"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
 func serverAddSettings(root *gin.RouterGroup) {
+
+	// View current settings.
 	root.GET("/settings", func(c *gin.Context) {
 		c.HTML(200, "settings.tmpl", gin.H{
 			"root":        webroot,
 			"environment": config.Environment,
 		})
 	})
-	root.GET("/settings/:action/:section/:editkey", func(c *gin.Context) {
-		action := c.Param("action")
-		section := c.Param("section")
-		editkey := c.Param("editkey")
-		if action != "environment" {
-			c.HTML(404, "error.tmpl", gin.H{
-				"root":  webroot,
-				"error": "cannot find page",
-			})
-			return
+
+	// Edit or create an environment variable form.
+	root.GET("/settings/environment/edit/:key", func(c *gin.Context) {
+		key := c.Param("key")
+
+		// "new" is a special sentinel value meaning create a new variable.
+		editkey := ""
+		if key != "new" {
+			editkey = key
 		}
-		if editkey == "new" {
-			editkey = ""
-		}
-		var data map[string]string = nil
-		if action == "environment" {
-			data = config.Environment
-		}
+
 		c.HTML(200, "settings-edit.tmpl", gin.H{
 			"root":    webroot,
-			"action":  action,
-			"section": section,
+			"action":  "environment",
 			"editkey": editkey,
-			"data":    data,
+			"data":    config.Environment,
 		})
 	})
-	root.POST("/settings", func(c *gin.Context) {
-		key := c.DefaultPostForm("key", "")
-		value := c.DefaultPostForm("value", "")
-		action := c.DefaultPostForm("action", "")
 
-		if action != "environment" {
-			c.HTML(404, "error.tmpl", gin.H{
-				"root":     webroot,
-				"location": webroot + "settings",
-				"error":    "invalid settings (Action)",
-			})
+	// Handle settings form submissions.
+	root.POST("/settings", func(c *gin.Context) {
+		action := strings.TrimSpace(c.PostForm("action"))
+
+		if action == "environment" {
+			handleEnvironmentSettings(c)
 			return
-		} else if action == "environment" {
-			editkey := c.DefaultPostForm("editkey", "")
-			subaction := c.DefaultPostForm("subaction", "")
-			editkey = strings.TrimSpace(editkey)
-			if editkey == "" && subaction != "new" {
-				c.HTML(404, "error.tmpl", gin.H{
-					"root":     webroot,
-					"location": webroot + "settings",
-					"error":    "invalid settings (Environment Variable)",
-				})
-			} else if subaction == "new" {
-				config.SetEnvironment(key, value)
-			} else if subaction == "delete" {
-				config.DelEnvironment(editkey)
-			} else {
-				if editkey != key {
-					config.DelEnvironment(editkey)
-				}
-				config.SetEnvironment(key, value)
-			}
 		}
-		config.Save()
-		c.Redirect(302, webroot+"settings")
+
+		c.Redirect(http.StatusFound, webroot+"settings")
 	})
+}
+
+/// \brief Handles environment variable new/edit/delete form submissions.
+func handleEnvironmentSettings(c *gin.Context) {
+	subaction := strings.TrimSpace(c.PostForm("subaction"))
+	editkey := strings.TrimSpace(c.PostForm("editkey"))
+	key := strings.TrimSpace(c.PostForm("key"))
+	value := strings.TrimSpace(c.PostForm("value"))
+
+	switch subaction {
+	case "new":
+		if len(key) > 0 {
+			config.SetEnvironment(key, value)
+			config.Save()
+		}
+	case "edit":
+		if len(editkey) > 0 && len(key) > 0 {
+			// If the key name changed, remove the old one.
+			if editkey != key {
+				config.DelEnvironment(editkey)
+			}
+			config.SetEnvironment(key, value)
+			config.Save()
+		}
+	case "delete":
+		if len(editkey) > 0 {
+			config.DelEnvironment(editkey)
+			config.Save()
+		}
+	}
+
+	c.Redirect(http.StatusFound, webroot+"settings")
 }

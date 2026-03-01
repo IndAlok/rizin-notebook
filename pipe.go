@@ -1,16 +1,26 @@
+/// \file pipe.go
+/// \brief Rizin subprocess management via null-byte delimited rzpipe protocol.
+
 package main
 
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
+// pipeReadTimeout is the maximum time to wait for a response from Rizin.
+const pipeReadTimeout = 5 * time.Minute
+
+/// \brief Describes a single argument for a Rizin command.
 type RizinCommandArg struct {
 	Type       string   `json:"type"`
 	Name       string   `json:"name"`
@@ -21,17 +31,20 @@ type RizinCommandArg struct {
 	Choices    []string `json:"choices,omitempty"`
 }
 
+/// \brief Single entry in a command detail group.
 type RizinCommandDetailEntry struct {
 	Text    string `json:"text,omitempty"`
 	Comment string `json:"comment,omitempty"`
 	Arg     string `json:"arg_str,omitempty"`
 }
 
+/// \brief Named group of detail entries for a command.
 type RizinCommandDetail struct {
 	Name    string                    `json:"name"`
 	Entries []RizinCommandDetailEntry `json:"entries,omitempty"`
 }
 
+/// \brief Rizin command metadata from `?*j` JSON output.
 type RizinCommand struct {
 	Command     string               `json:"cmd"`
 	ArgsStr     string               `json:"args_str"`
@@ -41,22 +54,52 @@ type RizinCommand struct {
 	Details     []RizinCommandDetail `json:"details,omitempty"`
 }
 
+/// \brief Active Rizin subprocess connected via rzpipe protocol.
 type Rizin struct {
 	pipe    *exec.Cmd
 	stdin   io.WriteCloser
 	stdout  io.ReadCloser
 	mutex   sync.Mutex
 	project string
+	closed  bool
 }
 
+/// \brief Runs `rizin -version` and returns output lines.
 func RizinInfo(rizinbin string) ([]string, error) {
-	out, err := exec.Command(rizinbin, "-version").Output()
-	if err != nil {
-		return nil, err
+	flags := [][]string{{"-version"}, {"--version"}, {"-v"}}
+	var lastErr error
+
+	for _, args := range flags {
+		out, err := exec.Command(rizinbin, args...).CombinedOutput()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		text := strings.TrimSpace(string(out))
+		if text == "" {
+			continue
+		}
+
+		lines := []string{}
+		for _, line := range strings.Split(text, "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				lines = append(lines, line)
+			}
+		}
+		if len(lines) > 0 {
+			return lines, nil
+		}
 	}
-	return strings.Split(string(out), "\n"), nil
+
+	if lastErr == nil {
+		lastErr = errors.New("no version output")
+	}
+	return nil, lastErr
 }
 
+/// \brief Runs `rizin -qc "?*j"` and returns parsed command metadata map.
 func RizinCommands(rizinbin string) (map[string]RizinCommand, error) {
 	out, err := exec.Command(rizinbin, "-qc", "?*j").Output()
 	if err != nil {
@@ -68,14 +111,14 @@ func RizinCommands(rizinbin string) (map[string]RizinCommand, error) {
 	return commands, err
 }
 
+/// \brief Launches a Rizin subprocess with flags: -2 -0 -e scr.color=3 -p project.
+/// Waits for initial null-byte prompt before returning.
 func NewRizin(rizinbin, file, project string) *Rizin {
 	args := []string{
 		"-2",
 		"-0",
-		"-e",
-		"scr.color=3",
-		"-p",
-		project,
+		"-e", "scr.color=3",
+		"-p", project,
 		file,
 	}
 	pipe := exec.Command(rizinbin, args...)
@@ -97,51 +140,101 @@ func NewRizin(rizinbin, file, project string) *Rizin {
 		return nil
 	}
 
-	rizin := &Rizin{pipe: pipe, stdin: stdin, stdout: stdout, project: project}
+	rizin := &Rizin{
+		pipe:    pipe,
+		stdin:   stdin,
+		stdout:  stdout,
+		project: project,
+		closed:  false,
+	}
 
+	// Wait for the initial null-byte prompt indicating Rizin is ready.
+	// This is done in a goroutine with the mutex held to prevent commands
+	// from being sent before Rizin has finished initialization.
 	go func(r *Rizin) {
 		r.mutex.Lock()
+		defer r.mutex.Unlock()
 		if _, err := bufio.NewReader(r.stdout).ReadString('\x00'); err != nil {
-			fmt.Println("pipe error:", err)
+			fmt.Println("pipe error: initial prompt:", err)
 		}
-		r.mutex.Unlock()
 	}(rizin)
+
 	return rizin
 }
 
-func (r *Rizin) getCommands(cmd string) (string, error) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	if _, err := fmt.Fprintln(r.stdin, cmd); err != nil {
-		fmt.Println("pipe error:", err)
-		return "", err
-	}
-	buf, err := bufio.NewReader(r.stdout).ReadString('\x00')
-	if err != nil && err != io.EOF {
-		fmt.Println("pipe error:", err)
-		return "", err
-	}
-	buf = string(bytes.Trim([]byte(buf), "\x00"))
-	return buf, nil
-}
-
+/// \brief Sends a command via stdin and reads the null-byte-delimited response.
 func (r *Rizin) exec(cmd string) (string, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
+
+	if r.closed {
+		return "", fmt.Errorf("pipe is closed")
+	}
+
 	if _, err := fmt.Fprintln(r.stdin, cmd); err != nil {
 		fmt.Println("pipe error:", err)
 		return "", err
 	}
-	buf, err := bufio.NewReader(r.stdout).ReadString('\x00')
-	if err != nil && err != io.EOF {
-		fmt.Println("pipe error:", err)
-		return "", err
+
+	// Use a context with timeout to prevent indefinite blocking.
+	ctx, cancel := context.WithTimeout(context.Background(), pipeReadTimeout)
+	defer cancel()
+
+	type readResult struct {
+		data string
+		err  error
 	}
-	buf = string(bytes.Trim([]byte(buf), "\x00"))
-	return buf, nil
+	ch := make(chan readResult, 1)
+
+	go func() {
+		buf, err := bufio.NewReader(r.stdout).ReadString('\x00')
+		if err != nil && err != io.EOF {
+			ch <- readResult{"", err}
+			return
+		}
+		buf = string(bytes.Trim([]byte(buf), "\x00"))
+		ch <- readResult{buf, nil}
+	}()
+
+	select {
+	case result := <-ch:
+		if result.err != nil {
+			fmt.Println("pipe error:", result.err)
+		}
+		return result.data, result.err
+	case <-ctx.Done():
+		return "", fmt.Errorf("pipe read timed out after %v", pipeReadTimeout)
+	}
 }
 
+/// \brief Saves project, sends q!, and waits for process exit (10s timeout).
 func (r *Rizin) close() {
-	r.exec("Ps " + r.project)
-	r.exec("q!")
+	if r.closed {
+		return
+	}
+	// Save the project before quitting. Errors are logged but not fatal.
+	if _, err := r.exec("Ps " + r.project); err != nil {
+		fmt.Println("pipe warning: failed to save project:", err)
+	}
+
+	// Send quit command. Use direct stdin write since exec() checks closed flag.
+	r.mutex.Lock()
+	r.closed = true
+	fmt.Fprintln(r.stdin, "q!")
+	r.mutex.Unlock()
+
+	// Wait for the process to exit (with a timeout).
+	done := make(chan error, 1)
+	go func() {
+		done <- r.pipe.Wait()
+	}()
+
+	select {
+	case <-done:
+		// Process exited cleanly.
+	case <-time.After(10 * time.Second):
+		// Force kill if it doesn't exit in time.
+		fmt.Println("pipe warning: force killing unresponsive rizin process")
+		r.pipe.Process.Kill()
+	}
 }

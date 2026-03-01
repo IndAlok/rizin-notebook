@@ -13,14 +13,28 @@
   </style>
 </head>
 <body>
-  <form style="margin-top: 15px; height: 100%;" action="{{ .root }}output/exec/{{ .unique }}" method="POST">
+  <form id="cmdform" style="margin-top: 15px; height: 100%;" action="{{ .root }}output/exec/{{ .unique }}" method="POST">
     <div class="form-group">
-      <input type="text" class="form-input command-input" name="command" value="" placeholder="Rizin command for example: pdf"/>
+      <input type="text" class="form-input command-input" id="cmdinput" name="command" value="" placeholder="Rizin command (e.g. pdf, aaa, ii)" autofocus/>
     </div>
     <div class="form-group">
       <button class="btn btn-primary" type="submit">Exec</button>
-      <a class="btn" href="{{ .root }}output/deleted">Cancel</a>
+      <button class="btn" type="button" onclick="window.parent.postMessage({type:'iframe-remove'},'*')">Cancel</button>
+      <span style="color:#999;font-size:12px;margin-left:8px;">Ctrl+Enter to execute</span>
     </div>
   </form>
+  <script>
+    var input = document.getElementById('cmdinput');
+    input.addEventListener('keydown', function(e) {
+      if (e.ctrlKey && e.key === 'Enter') document.getElementById('cmdform').submit();
+    });
+    document.getElementById('cmdform').addEventListener('submit', function(e) {
+      if (!input.value.trim()) { e.preventDefault(); window.parent.postMessage({type:'iframe-remove'},'*'); }
+    });
+    (function(){
+      var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+      if (window.parent !== window) window.parent.postMessage({type:'iframe-resize',height:h},'*');
+    })();
+  </script>
 </body>
 </html>

@@ -14,7 +14,9 @@
       .navbar-fixed-height { height: 32px; }
       .icon-height { height: 20px; }
       .title-margin { margin-top: auto; margin-bottom: auto; margin-right: 10px; }
-      .md-heigh { height: 64px; }
+      .output-frame { min-height: 80px; }
+      .md-frame { min-height: 50px; }
+      .cell-group { position: relative; margin-bottom: 2px; }
       .pipe { color: #e85600; border-color: #e85600; }
       .pipe:hover { background: #e85600; border-color: #e85600; }
       iframe { border: 0px; width: 100%; height: 100% }
@@ -46,21 +48,74 @@
       .modal-close { float: right; width: 32px; }
     </style>
     <script>
+      function resizeIframe(obj, padding) {
+        try {
+          var h = obj.contentWindow.document.documentElement.scrollHeight;
+          if (h > 20) { obj.style.height = (h + padding) + 'px'; }
+        } catch(e) {}
+      }
       function handle(obj) {
-        obj.style.height = (obj.contentWindow.document.documentElement.scrollHeight + 20) + 'px';
-        if (obj.contentWindow.location.href.indexOf("/deleted") > 0) {
-          obj.parentNode.parentNode.removeChild(obj.parentNode);
-        }
-        window.scrollTo(0, document.body.scrollHeight);
+        resizeIframe(obj, 20);
+        try {
+          if (obj.contentWindow.location.href.indexOf("/deleted") > 0) {
+            var group = obj.closest('.cell-group');
+            if (group) { group.remove(); } else { obj.parentNode.remove(); }
+            return;
+          }
+        } catch(e) {}
+        setTimeout(function() { resizeIframe(obj, 20); }, 150);
+        setTimeout(function() { resizeIframe(obj, 20); }, 500);
       }
       function output(obj) {
-        obj.style.height = obj.contentWindow.document.documentElement.scrollHeight + 'px';
-        if (obj.contentWindow.location.href.indexOf("/deleted") > 0) {
-          obj.parentNode.parentNode.removeChild(obj.parentNode);
-        } else if (obj.contentWindow.location.href.indexOf("/loaded") > 0) {
-          location.reload()
+        resizeIframe(obj, 10);
+        try {
+          var loc = obj.contentWindow.location.href;
+          if (loc.indexOf("/deleted") > 0) {
+            var group = obj.closest('.cell-group');
+            if (group) { group.remove(); } else { obj.parentNode.remove(); }
+            return;
+          }
+          if (loc.indexOf("/loaded") > 0) {
+            location.reload();
+            return;
+          }
+        } catch(e) {}
+        setTimeout(function() { resizeIframe(obj, 10); }, 150);
+        setTimeout(function() { resizeIframe(obj, 10); }, 500);
+      }
+      window.addEventListener('message', function(e) {
+        if (!e.data || !e.data.type) return;
+        if (e.data.type === 'iframe-resize') {
+          var iframes = document.querySelectorAll('iframe');
+          for (var k = 0; k < iframes.length; k++) {
+            try {
+              if (iframes[k].contentWindow === e.source) {
+                iframes[k].style.height = Math.max(e.data.height, 50) + 'px';
+                break;
+              }
+            } catch(err) {}
+          }
+        } else if (e.data.type === 'iframe-remove') {
+          var iframes = document.querySelectorAll('iframe');
+          for (var k = 0; k < iframes.length; k++) {
+            try {
+              if (iframes[k].contentWindow === e.source) {
+                var group = iframes[k].closest('.cell-group');
+                if (group) { group.remove(); } else { iframes[k].parentNode.remove(); }
+                break;
+              }
+            } catch(err) {}
+          }
+        } else if (e.data.type === 'iframe-reload') {
+          location.reload();
         }
-        window.scrollTo(0, document.body.scrollHeight);
+      });
+      function deleteCell(url, cellId) {
+        if (!window.confirm("Are you sure you want to delete this cell?")) return;
+        fetch(url, {redirect: 'follow'}).then(function() {
+          var el = document.getElementById('cell-' + cellId);
+          if (el) el.remove();
+        });
       }
       function newmd() {
         var body = document.getElementById("page-body");
@@ -72,8 +127,8 @@
         iframe.setAttribute("frameborder", "0");
         iframe.setAttribute("marginheight", "0");
         iframe.setAttribute("marginwidth", "0");
+        iframe.style.height = "300px";
         iframe.setAttribute("width", "100%");
-        iframe.setAttribute("height", "100%");
         iframe.setAttribute("scrolling", "no");
         iframe.setAttribute("onload", "handle(this)");
         iframe.src = "{{ $root }}markdown/new/{{ $page.unique }}";
@@ -92,7 +147,6 @@
         iframe.setAttribute("marginheight", "0");
         iframe.setAttribute("marginwidth", "0");
         iframe.setAttribute("width", "100%");
-        iframe.setAttribute("height", "110%");
         iframe.setAttribute("scrolling", "no");
         iframe.setAttribute("onload", "output(this)");
         iframe.src = "{{ $root }}output/input/script/{{ $page.unique }}";
@@ -106,11 +160,11 @@
 
         div.className = "panel spacing-top";
         iframe.className = "panel-body no-borders";
+        iframe.style.height = "120px";
         iframe.setAttribute("frameborder", "0");
         iframe.setAttribute("marginheight", "0");
         iframe.setAttribute("marginwidth", "0");
         iframe.setAttribute("width", "100%");
-        iframe.setAttribute("height", "100%");
         iframe.setAttribute("scrolling", "no");
         iframe.setAttribute("onload", "output(this)");
         iframe.src = "{{ $root }}output/input/console/{{ $page.unique }}";
@@ -163,7 +217,7 @@
           detail.className = "modal-detail";
           detail.textContent = details[i].name;
           parent.appendChild(detail);
-          for (var i = 0; i < entries.length; i++) {
+          for (var j = 0; j < entries.length; j++) {
             var entry = document.createElement('li');
             entry.className = "modal-entry";
             detail.appendChild(entry);
@@ -172,24 +226,24 @@
             text.className = "modal-entry-text";
             entry.appendChild(text);
 
-            if ((entries[i].text || "").length > 0) {
+            if ((entries[j].text || "").length > 0) {
               element = document.createElement('span');
               element.className = "modal-name";
-              element.textContent = entries[i].text;
+              element.textContent = entries[j].text;
               text.appendChild(element);
             }
 
-            if ((entries[i].arg_str || "").length > 0) {
+            if ((entries[j].arg_str || "").length > 0) {
               element = document.createElement('span');
               element.className = "modal-args";
-              element.textContent = entries[i].arg_str;
+              element.textContent = entries[j].arg_str;
               text.appendChild(element);
             }
 
-            if ((entries[i].comment || "").length > 0) {
+            if ((entries[j].comment || "").length > 0) {
               element = document.createElement('span');
               element.style.display = "inline-block";
-              element.textContent = " # " + entries[i].comment;
+              element.textContent = " # " + entries[j].comment;
               entry.appendChild(element);
             }
           }
@@ -265,22 +319,26 @@
         <div class="column" style="padding-top: 0px" id="page-body">
 {{ range $i, $line := $page.lines }}
 {{ if eq $line.type "markdown" }}
+          <div class="cell-group" id="cell-{{ $line.unique }}">
           <div class="panel spacing-top resizer">
-            <iframe frameborder="0" marginheight="0" marginwidth="0" width="100%" height="100%" scrolling="no" onload="handle(this)" onunload="handle(this)" class="panel-body no-borders md-heigh" src="{{ $root }}markdown/view/{{ $page.unique }}/{{ $line.unique }}"></iframe>
+            <iframe frameborder="0" marginheight="0" marginwidth="0" width="100%" scrolling="no" onload="handle(this)" class="panel-body no-borders md-frame" src="{{ $root }}markdown/view/{{ $page.unique }}/{{ $line.unique }}"></iframe>
+          </div>
           </div>
 {{ else }}
+          <div class="cell-group" id="cell-{{ $line.unique }}">
           <div class="input-group spacing-top">
 {{ if eq $line.type "script" }}
             <code style="display: block; white-space: pre-wrap;" class="input-group-addon spacing-right spacing-left">{{ $line.script }}</code>
 {{ else }}
             <code class="input-group-addon spacing-right spacing-left">{{ $line.command }}</code>
 {{ end }}
-            <a class="btn float-right" href="{{ $root }}output/delete/{{ $page.unique }}/{{ $line.unique }}" onclick="confirm_delete(event)">
+            <button class="btn float-right" type="button" onclick="deleteCell('{{ $root }}output/delete/{{ $page.unique }}/{{ $line.unique }}', '{{ $line.unique }}')">
               <i class="icon icon-delete icon-height">Delete</i>
-            </a>
+            </button>
           </div>
           <div class="input-group spacing-top">
-            <iframe id="output-{{ $i }}" frameborder="0" marginheight="0" marginwidth="0" width="100%" height="100%" scrolling="no" onload="handle(this)" class="input-group-addon spacing-left md-heigh" src="{{ $root }}output/view/{{ $page.unique }}/{{ $line.unique }}"></iframe>
+            <iframe id="output-{{ $i }}" frameborder="0" marginheight="0" marginwidth="0" width="100%" scrolling="no" onload="handle(this)" class="input-group-addon spacing-left output-frame" src="{{ $root }}output/view/{{ $page.unique }}/{{ $line.unique }}"></iframe>
+          </div>
           </div>
 {{ end }}
 {{ end }}

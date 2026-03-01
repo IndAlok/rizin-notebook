@@ -1,37 +1,40 @@
+/// \file server_about.go
+/// \brief About page handler — displays app and Rizin version info.
+
 package main
 
 import (
+	"os"
+	"os/exec"
+
 	"github.com/gin-gonic/gin"
 )
 
+/// \brief Registers GET /about with version info from `rizin -version`.
 func serverAddAbout(root *gin.RouterGroup) {
 	root.GET("/about", func(c *gin.Context) {
 		var rzversion, rzbuild string
-		info, err := notebook.info()
-		rzpath := notebook.rizin
-
-		if err != nil {
-			rzversion = err.Error()
-			rzbuild = rzversion
-			if rzpath == "rizin" {
-				rzpath = "Not found in $PATH"
-			} else {
-				rzpath = "Not found in " + rzpath
-			}
-		} else {
+		if info, err := notebook.info(); err == nil && len(info) > 0 {
 			rzversion = info[0]
-			rzbuild = info[1]
-			if rzpath == "rizin" {
-				rzpath = "Available from $PATH"
+			if len(info) > 1 {
+				rzbuild = info[1]
 			}
+		}
+
+		rzpath := os.Getenv("RIZIN_PATH")
+		if len(rzpath) < 1 {
+			rzpath = notebook.rizin
+		}
+		if resolved, err := exec.LookPath(rzpath); err == nil {
+			rzpath = resolved
 		}
 
 		c.HTML(200, "about.tmpl", gin.H{
 			"root":      webroot,
+			"nbversion": NBVERSION,
 			"rzversion": rzversion,
 			"rzbuild":   rzbuild,
 			"rzpath":    rzpath,
-			"nbversion": NBVERSION,
 			"storage":   notebook.storage,
 		})
 	})

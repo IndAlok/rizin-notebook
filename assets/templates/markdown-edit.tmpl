@@ -18,7 +18,7 @@
     <form action="{{ .root }}markdown/save{{ .path }}" method="POST">
       <div class="position-right">
         <button class="btn btn-action button-edit" type="submit"><i class="icon icon-share">Code</i> Save</button>
-        <a class="btn btn-action button-edit" href="{{ .root }}markdown/delete{{ .path }}"><i class="icon icon-cross">Code</i> Delete</a>
+        <button class="btn btn-action button-edit" type="button" onclick="if(confirm('Delete this cell?')){fetch('{{ .root }}markdown/delete{{ .path }}',{redirect:'follow'}).then(function(){window.parent.postMessage({type:'iframe-remove'},'*')})}"><i class="icon icon-cross">Code</i> Delete</button>
         <a class="btn btn-action button-edit" href="{{ .root }}markdown/view{{ .path }}"><i class="icon icon-edit">Code</i> Cancel</a>
       </div>
       <div class="form-group">
@@ -40,6 +40,10 @@
         promptURLs: true,
         tabSize: 4,
     });
+    setTimeout(function() {
+      var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+      if (window.parent !== window) window.parent.postMessage({type:'iframe-resize',height:h},'*');
+    }, 100);
   };
   </script>
 </body>

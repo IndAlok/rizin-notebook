@@ -1,54 +1,52 @@
+/// \file config.go
+/// \brief Persistent notebook configuration (environment variables) as JSON.
+
 package main
 
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
 	"sync"
 )
 
-const (
-	CONFIG_FILE = "config.json"
-	KB_INDEX    = "Index"
-	KB_PAGE     = "Page"
-)
+// ConfigFile is the filename for the notebook configuration JSON file.
+const ConfigFile = "config.json"
 
+/// \brief Persistent configuration stored as JSON on disk.
 type NotebookConfig struct {
 	Environment map[string]string `json:"environment"`
 	filename    string
 	mutex       sync.Mutex
 }
 
-func getValue(kmap map[string]string, action, defkey string) string {
-	if kmap == nil {
-		return defkey
-	}
-	if value, ok := kmap[action]; ok && len(value) > 0 {
-		return value
-	}
-	return defkey
-}
-
+/// \brief Loads config from disk, creating defaults if absent.
 func NewNotebookConfig(folder string) *NotebookConfig {
-	var config = &NotebookConfig{}
-	config.filename = path.Join(folder, CONFIG_FILE)
-	bytes, err := ioutil.ReadFile(config.filename)
+	nc := &NotebookConfig{}
+	nc.filename = path.Join(folder, ConfigFile)
+
+	bytes, err := os.ReadFile(nc.filename)
 	if err == nil {
-		json.Unmarshal(bytes, config)
-	}
-	if config.Environment == nil {
-		config.Environment = map[string]string{}
+		if jsonErr := json.Unmarshal(bytes, nc); jsonErr != nil {
+			fmt.Printf("warning: failed to parse config file: %v\n", jsonErr)
+		}
 	}
 
-	if value, ok := config.Environment["RIZIN_PATH"]; !ok || len(value) < 1 {
-		config.Environment["RIZIN_PATH"] = os.Getenv("RIZIN_PATH")
+	if nc.Environment == nil {
+		nc.Environment = map[string]string{}
 	}
-	return config
+
+	// Auto-populate RIZIN_PATH from the OS environment if not configured.
+	if value, ok := nc.Environment["RIZIN_PATH"]; !ok || len(value) < 1 {
+		nc.Environment["RIZIN_PATH"] = os.Getenv("RIZIN_PATH")
+	}
+
+	return nc
 }
 
+/// \brief Applies all configured env vars to os.Setenv.
 func (nc *NotebookConfig) UpdateEnvironment() {
 	nc.mutex.Lock()
 	defer nc.mutex.Unlock()
@@ -57,6 +55,7 @@ func (nc *NotebookConfig) UpdateEnvironment() {
 	}
 }
 
+/// \brief Removes an env var from config and OS.
 func (nc *NotebookConfig) DelEnvironment(key string) {
 	nc.mutex.Lock()
 	defer nc.mutex.Unlock()
@@ -65,6 +64,7 @@ func (nc *NotebookConfig) DelEnvironment(key string) {
 	os.Unsetenv(key)
 }
 
+/// \brief Sets an env var in both config and OS.
 func (nc *NotebookConfig) SetEnvironment(key, value string) {
 	nc.mutex.Lock()
 	defer nc.mutex.Unlock()
@@ -74,11 +74,16 @@ func (nc *NotebookConfig) SetEnvironment(key, value string) {
 	nc.Environment[key] = value
 }
 
+/// \brief Persists config to disk as formatted JSON.
 func (nc *NotebookConfig) Save() {
 	nc.mutex.Lock()
 	defer nc.mutex.Unlock()
-	bytes, _ := json.MarshalIndent(nc, "", "\t")
-	if err := ioutil.WriteFile(nc.filename, bytes, 0644); err != nil {
-		fmt.Println(err)
+	bytes, err := json.MarshalIndent(nc, "", "\t")
+	if err != nil {
+		fmt.Printf("error: failed to marshal config: %v\n", err)
+		return
+	}
+	if err := os.WriteFile(nc.filename, bytes, 0644); err != nil {
+		fmt.Printf("error: failed to save config: %v\n", err)
 	}
 }

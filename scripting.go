@@ -1,28 +1,42 @@
+/// \file scripting.go
+/// \brief Goja-based JS engine with rizin.cmd/cmdj and console.* APIs.
+
 package main
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/dop251/goja"
 	"golang.org/x/sync/semaphore"
-	"time"
 )
 
+// scriptTimeout is the maximum execution time for a single script.
+const scriptTimeout = 5 * time.Minute
+
+/// \brief Goja JS runtime with Rizin pipe integration.
 type JavaScript struct {
 	semaphore *semaphore.Weighted
 	runtime   *goja.Runtime
 	rizin     *Rizin
-	output    string
+	output    strings.Builder
 }
 
-func rizinCmd(command string, rizin *Rizin) (string, error) {
-	rizin.exec("scr.color=0")
-	result, err := rizin.exec(command)
-	rizin.exec("scr.color=3")
+/// \brief Executes a Rizin command with color disabled for clean script output.
+func rizinCmd(command string, rz *Rizin) (string, error) {
+	if _, err := rz.exec("e scr.color=0"); err != nil {
+		return "", err
+	}
+	result, err := rz.exec(command)
+	// Restore color regardless of command success.
+	rz.exec("e scr.color=3")
 	return result, err
 }
 
+/// \brief Converts a Go value to string (JSON-pretty for arrays/maps).
 func convertValue(ivalue interface{}) string {
 	switch value := ivalue.(type) {
 	case []interface{}:
@@ -36,86 +50,136 @@ func convertValue(ivalue interface{}) string {
 	}
 }
 
+/// \brief Creates the JS engine and registers rizin.* and console.* APIs.
 func NewJavaScript() *JavaScript {
 	runtime := goja.New()
 	if runtime == nil {
-		fmt.Println("cannot create a JavaScript runtime.")
+		fmt.Println("error: cannot create JavaScript runtime")
 		return nil
 	}
+
 	sem := semaphore.NewWeighted(1)
 	js := &JavaScript{semaphore: sem, runtime: runtime, rizin: nil}
-	rizin := map[string]interface{}{}
-	rizin["cmd"] = func(args ...interface{}) goja.Value {
+
+	// Register the rizin API object.
+	rizinAPI := map[string]interface{}{}
+	rizinAPI["cmd"] = func(args ...interface{}) goja.Value {
 		if js.rizin == nil {
 			panic(js.runtime.ToValue("Rizin pipe is closed."))
-		} else if len(args) < 1 {
+		}
+		if len(args) < 1 {
 			panic(js.runtime.ToValue("No string was passed."))
 		}
-		switch value := args[0].(type) {
-		case string:
-			result, err := rizinCmd(value, js.rizin)
-			if err != nil {
-				panic(js.runtime.ToValue(err))
-			}
-			return js.runtime.ToValue(result)
-		default:
+		cmdStr, ok := args[0].(string)
+		if !ok {
 			panic(js.runtime.ToValue("input is not a string."))
 		}
-	}
-	rizin["cmdj"] = func(args ...interface{}) goja.Value {
-		if js.rizin == nil {
-			panic(js.runtime.ToValue("Rizin pipe is closed."))
-		} else if len(args) < 1 {
-			panic(js.runtime.ToValue("No string was passed."))
+		result, err := rizinCmd(cmdStr, js.rizin)
+		if err != nil {
+			panic(js.runtime.ToValue(err.Error()))
 		}
-		switch value := args[0].(type) {
-		case string:
-			result, err := rizinCmd(value, js.rizin)
-			if err != nil {
-				panic(js.runtime.ToValue(err))
-			}
-			var data interface{}
-			err = json.Unmarshal([]byte(result), &data)
-			if err != nil {
-				panic(js.runtime.ToValue(err))
-			}
-			return js.runtime.ToValue(data)
-		default:
-			panic(js.runtime.ToValue("input is not a string."))
-		}
+		return js.runtime.ToValue(result)
 	}
 
-	console := map[string]interface{}{}
-	console["log"] = func(args ...interface{}) {
-		n_args := len(args)
+	rizinAPI["cmdj"] = func(args ...interface{}) goja.Value {
+		if js.rizin == nil {
+			panic(js.runtime.ToValue("Rizin pipe is closed."))
+		}
+		if len(args) < 1 {
+			panic(js.runtime.ToValue("No string was passed."))
+		}
+		cmdStr, ok := args[0].(string)
+		if !ok {
+			panic(js.runtime.ToValue("input is not a string."))
+		}
+		result, err := rizinCmd(cmdStr, js.rizin)
+		if err != nil {
+			panic(js.runtime.ToValue(err.Error()))
+		}
+		var data interface{}
+		if jsonErr := json.Unmarshal([]byte(result), &data); jsonErr != nil {
+			panic(js.runtime.ToValue(jsonErr.Error()))
+		}
+		return js.runtime.ToValue(data)
+	}
+
+	// Register the console API object.
+	consoleAPI := map[string]interface{}{}
+
+	// writeArgs writes all arguments to js.output separated by spaces.
+	writeArgs := func(prefix string, args []interface{}) {
+		if len(prefix) > 0 {
+			js.output.WriteString(prefix)
+			js.output.WriteString(" ")
+		}
 		for i, value := range args {
-			js.output += convertValue(value)
-			if i+1 < n_args {
-				js.output += " "
+			js.output.WriteString(convertValue(value))
+			if i+1 < len(args) {
+				js.output.WriteString(" ")
 			}
 		}
-		js.output += "\n"
+		js.output.WriteString("\n")
 	}
 
-	runtime.Set("rizin", rizin)
-	runtime.Set("console", console)
+	consoleAPI["log"] = func(args ...interface{}) {
+		writeArgs("", args)
+	}
+
+	consoleAPI["warn"] = func(args ...interface{}) {
+		writeArgs("[WARN]", args)
+	}
+
+	consoleAPI["error"] = func(args ...interface{}) {
+		writeArgs("[ERROR]", args)
+	}
+
+	consoleAPI["info"] = func(args ...interface{}) {
+		writeArgs("[INFO]", args)
+	}
+
+	consoleAPI["clear"] = func() {
+		js.output.Reset()
+	}
+
+	consoleAPI["table"] = func(args ...interface{}) {
+		if len(args) < 1 {
+			return
+		}
+		bytes, err := json.MarshalIndent(args[0], "", "  ")
+		if err != nil {
+			js.output.WriteString(fmt.Sprintf("[TABLE] %v\n", args[0]))
+			return
+		}
+		js.output.WriteString(string(bytes))
+		js.output.WriteString("\n")
+	}
+
+	runtime.Set("rizin", rizinAPI)
+	runtime.Set("console", consoleAPI)
 	return js
 }
 
-func (js *JavaScript) exec(script string, rizin *Rizin) (string, error) {
+/// \brief Runs a script with semaphore-limited concurrency and timeout.
+func (js *JavaScript) exec(script string, rz *Rizin) (string, error) {
 	if !js.semaphore.TryAcquire(1) {
-		return "", errors.New("A script is already running.")
+		return "", errors.New("a script is already running")
 	}
 	defer js.semaphore.Release(1)
-	js.rizin = rizin
-	js.output = ""
-	timer := time.AfterFunc(5*time.Minute, func() {
+
+	js.rizin = rz
+	js.output.Reset()
+
+	timer := time.AfterFunc(scriptTimeout, func() {
 		js.runtime.Interrupt("The script execution has timed out.")
 	})
+	defer timer.Stop()
+
 	_, err := js.runtime.RunScript("script.js", script)
-	result := js.output
+	result := js.output.String()
+
+	// Clean up state for next execution.
 	js.rizin = nil
-	js.output = ""
-	timer.Stop()
+	js.output.Reset()
+
 	return result, err
 }

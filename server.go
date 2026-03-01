@@ -1,22 +1,25 @@
+/// \file server.go
+/// \brief HTTP router setup and route group registration.
+
 package main
 
 import (
-	"fmt"
 	"github.com/gin-gonic/gin"
 )
 
+/// \brief Ensures webroot ends with a trailing slash.
 func sanitizeWebRoot(path string) string {
 	if len(path) < 2 {
 		return "/"
-	} else if len(path) > 1 && path[len(path)-1] != '/' {
+	}
+	if path[len(path)-1] != '/' {
 		return path + "/"
 	}
 	return path
 }
 
-func runServer(assets, bind string, debug bool) {
-	var root *gin.RouterGroup
-
+/// \brief Creates and configures the Gin router with all route groups.
+func setupRouter(assets, bind string, debug bool) *gin.Engine {
 	gin.DisableConsoleColor()
 	if debug {
 		gin.SetMode(gin.DebugMode)
@@ -28,10 +31,11 @@ func runServer(assets, bind string, debug bool) {
 
 	static, templates := setupTemplate(assets, router)
 
-	root = router.Group(sanitizeWebRoot(webroot))
+	root := router.Group(sanitizeWebRoot(webroot))
 
 	serverAddAssets(root, assets, static, templates)
 
+	// Index page: list all notebook pages.
 	root.GET("/", func(c *gin.Context) {
 		c.HTML(200, "index.tmpl", gin.H{
 			"root": webroot,
@@ -40,9 +44,7 @@ func runServer(assets, bind string, debug bool) {
 	})
 
 	serverAddAbout(root)
-
 	serverAddSettings(root)
-
 	serverAddPage(root)
 
 	pipe := root.Group("/pipe")
@@ -54,6 +56,5 @@ func runServer(assets, bind string, debug bool) {
 	output := root.Group("/output")
 	serverAddOutput(output)
 
-	fmt.Printf("Server listening at http://%s\n", bind)
-	router.Run(bind)
+	return router
 }

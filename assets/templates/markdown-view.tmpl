@@ -33,6 +33,10 @@
     });
     var md = smde.value();
     document.getElementById('markdown-container').innerHTML = smde.markdown(md);
+    setTimeout(function() {
+      var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+      if (window.parent !== window) window.parent.postMessage({type:'iframe-resize',height:h},'*');
+    }, 50);
   };
   </script>
 </body>

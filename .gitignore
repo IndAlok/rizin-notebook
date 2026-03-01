@@ -1,3 +1,23 @@
 rz-notebook
 rizin-notebook
+rizin-notebook.exe
+rizin-notebook.exe~
+
+# Go
+*.test
+*.out
+coverage.out
+
+# Local notebook storage
 .test-data
+.rizin-notebook/
+
+# Cutter plugin build artifacts
+cutter-notebook-plugin/build/
+cutter-notebook-plugin/cmake-build-*/
+cutter-notebook-plugin/.qt/
+cutter-notebook-plugin/*.zip
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

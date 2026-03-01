@@ -19,6 +19,7 @@
       function confirm_delete(event) {
         if (!window.confirm("Are you sure you want to delete it?")) {
           event.preventDefault();
+          return;
         }
         document.getElementById('subaction').value = "delete";
       }
@@ -29,6 +30,8 @@
           event.preventDefault();
         }
       }
+{{ else }}
+      function verify(event) {}
 {{ end }}
     </script>
   </head>
