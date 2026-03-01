@@ -69,9 +69,9 @@ If you want to copy manually:
 1. Build `CutterNotebookPlugin`.
 2. Copy the produced plugin library (`.dll` / `.so` / `.dylib`) to Cutter's native plugin directory.
 3. Ensure `rizin-notebook` binary is either:
-	- configured in the plugin settings dialog,
-	- available in `PATH`,
-	- or available via `RIZIN_NOTEBOOK_PATH`.
+   - configured in the plugin settings dialog,
+   - available in `PATH`,
+   - or available via `RIZIN_NOTEBOOK_PATH`.
 
 ## GitHub Automation
 
