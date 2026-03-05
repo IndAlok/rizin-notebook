@@ -4,6 +4,9 @@
 #include <CutterPlugin.h>
 
 class QMenu;
+class QDockWidget;
+class QLabel;
+class MainWindow;
 
 class CutterNotebookPlugin final : public QObject, public CutterPlugin {
     Q_OBJECT
@@ -23,9 +26,17 @@ public:
     QString getVersion() const override { return "1.0.0"; }
 
 private:
+    QString runCmd(const QString &cmd, bool *ok = nullptr);
+    bool ensureNotebookReady(QString *statusOut = nullptr);
+    void refreshDockStatus();
+
     void onServerStatus();
     void onListPages();
     void onNewPage();
     void onOpenBrowser();
     void onSetUrl();
+
+    MainWindow *mainWindow = nullptr;
+    QDockWidget *dockWidget = nullptr;
+    QLabel *statusLabel = nullptr;
 };

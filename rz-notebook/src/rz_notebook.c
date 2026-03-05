@@ -575,29 +575,38 @@ static RzCmdStatus cmd_nb_pipe_close(RzCore *core, int argc, const char **argv) 
 }
 
 static RzCmdStatus cmd_nb_url(RzCore *core, int argc, const char **argv) {
-	(void)core;
 	if (argc < 2) {
-		rz_cons_printf("Server URL: %s\n", nb_http_get_base_url());
+		rz_cons_printf("%s\n", nb_http_get_base_url());
 		return RZ_CMD_STATUS_OK;
 	}
 	nb_http_set_base_url(argv[1]);
-	rz_cons_printf("Server URL set to: %s\n", nb_http_get_base_url());
+	if (core && core->config && rz_config_get(core->config, "notebook.url")) {
+		rz_config_set(core->config, "notebook.url", nb_http_get_base_url());
+	}
+	rz_cons_printf("%s\n", nb_http_get_base_url());
 	return RZ_CMD_STATUS_OK;
 }
 
 // ── Command Help & Arg Descriptions ─────────────────────────────────────
 
+static const RzCmdDescArg nb_no_args[] = {
+	{ 0 },
+};
+
 static const RzCmdDescHelp nb_group_help = {
 	.summary = "Notebook commands",
 	.description = "Interact with the rizin-notebook server to manage analysis notebooks.",
+	.args = nb_no_args,
 };
 
 static const RzCmdDescHelp nb_status_help = {
 	.summary = "Show notebook server status",
+	.args = nb_no_args,
 };
 
 static const RzCmdDescHelp nb_list_help = {
 	.summary = "List notebook pages",
+	.args = nb_no_args,
 };
 
 static const RzCmdDescArg nb_new_args[] = {
@@ -719,6 +728,10 @@ static bool rz_notebook_init(RzCore *core) {
 	if (cfg_url && *cfg_url) {
 		nb_http_set_base_url(cfg_url);
 	}
+	// Ensure config has the effective URL, even when default is used.
+	if (rz_config_get(core->config, "notebook.url")) {
+		rz_config_set(core->config, "notebook.url", nb_http_get_base_url());
+	}
 
 	// Register NB command group.
 	RzCmd *cmd = core->rcmd;
@@ -750,6 +763,12 @@ static bool rz_notebook_init(RzCore *core) {
 	rz_cmd_desc_argv_new(cmd, nb_cd, "NBo", cmd_nb_pipe_open, &nb_pipe_open_help);
 	rz_cmd_desc_argv_new(cmd, nb_cd, "NBc", cmd_nb_pipe_close, &nb_pipe_close_help);
 	rz_cmd_desc_argv_new(cmd, nb_cd, "NBu", cmd_nb_url, &nb_url_help);
+
+	// Proactively try to ensure the server is reachable on plugin load.
+	// If this fails, individual commands will retry and show concrete errors.
+	if (!ensure_server()) {
+		NB_LOG_INFO("server was not reachable during init; commands will retry startup");
+	}
 
 	NB_LOG_INFO("notebook plugin loaded (server: %s)", nb_http_get_base_url());
 	return true;

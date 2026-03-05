@@ -78,6 +78,34 @@ else()
     message(STATUS "Found protobuf-c: ${PROTOBUF_C_LIB}")
 endif()
 
+# Resolve protobuf-c runtime DLL path for Windows packaging/install.
+set(PROTOBUF_C_RUNTIME_DLL "")
+if(WIN32)
+    if(TARGET protobuf-c::protobuf-c)
+        get_target_property(_pb_dll_rel protobuf-c::protobuf-c IMPORTED_LOCATION_RELEASE)
+        get_target_property(_pb_dll_dbg protobuf-c::protobuf-c IMPORTED_LOCATION_DEBUG)
+        get_target_property(_pb_dll_any protobuf-c::protobuf-c IMPORTED_LOCATION)
+        if(_pb_dll_rel)
+            set(PROTOBUF_C_RUNTIME_DLL "${_pb_dll_rel}")
+        elseif(_pb_dll_any)
+            set(PROTOBUF_C_RUNTIME_DLL "${_pb_dll_any}")
+        elseif(_pb_dll_dbg)
+            set(PROTOBUF_C_RUNTIME_DLL "${_pb_dll_dbg}")
+        endif()
+    endif()
+
+    # vcpkg fallback for common setup.
+    if(NOT PROTOBUF_C_RUNTIME_DLL AND EXISTS "C:/vcpkg/installed/x64-windows/bin/protobuf-c.dll")
+        set(PROTOBUF_C_RUNTIME_DLL "C:/vcpkg/installed/x64-windows/bin/protobuf-c.dll")
+    endif()
+
+    if(PROTOBUF_C_RUNTIME_DLL)
+        message(STATUS "protobuf-c runtime DLL: ${PROTOBUF_C_RUNTIME_DLL}")
+    else()
+        message(WARNING "protobuf-c runtime DLL path not found; rz_notebook.dll may fail to load unless protobuf-c.dll is in PATH")
+    endif()
+endif()
+
 # ── WinHTTP (Windows) or libcurl (Unix) ──────────────────────────────────
 if(WIN32)
     set(HTTP_LIBS winhttp)
@@ -142,5 +170,18 @@ install(TARGETS rz_notebook
     LIBRARY DESTINATION "${RZ_INSTALL_PLUGDIR}"
     RUNTIME DESTINATION "${RZ_INSTALL_PLUGDIR}"
 )
+
+if(WIN32 AND PROTOBUF_C_RUNTIME_DLL)
+    # Keep plugin self-contained at install destination.
+    install(FILES "${PROTOBUF_C_RUNTIME_DLL}" DESTINATION "${RZ_INSTALL_PLUGDIR}")
+
+    # Also place runtime next to build output DLL for manual copy workflows and CI artifacts.
+    add_custom_command(TARGET rz_notebook POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${PROTOBUF_C_RUNTIME_DLL}"
+            "$<TARGET_FILE_DIR:rz_notebook>/protobuf-c.dll"
+        VERBATIM
+    )
+endif()
 
 message(STATUS "Rizin plugin install dir: ${RZ_INSTALL_PLUGDIR}")
