@@ -73,6 +73,7 @@ jobs:
         with:
           name: rizin-notebook-${{ matrix.goos }}-${{ matrix.goarch }}
           path: rizin-notebook-${{ matrix.goos }}-${{ matrix.goarch }}*
+          if-no-files-found: error
 
   # ── Rizin core plugin (rz-notebook) — Windows ──────────────────────────
 
@@ -81,6 +82,15 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify plugin sources
+        shell: pwsh
+        run: |
+          if (!(Test-Path "rz-notebook\CMakeLists.txt")) {
+            Write-Host "::error::rz-notebook sources are missing from repository checkout. Commit the rz-notebook directory."
+            Get-ChildItem -Path .
+            exit 1
+          }
 
       - name: Install vcpkg packages
         run: vcpkg install protobuf-c:x64-windows
@@ -118,6 +128,7 @@ jobs:
         with:
           name: rz-notebook-windows-x64
           path: rz-notebook/build/Release/rz_notebook.dll
+          if-no-files-found: error
 
   # ── Rizin core plugin (rz-notebook) — Linux ────────────────────────────
 
@@ -126,6 +137,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify plugin sources
+        run: |
+          test -f rz-notebook/CMakeLists.txt || {
+            echo "::error::rz-notebook sources are missing from repository checkout. Commit the rz-notebook directory.";
+            ls -la;
+            exit 1;
+          }
 
       - name: Install dependencies
         run: |
@@ -153,6 +172,7 @@ jobs:
         with:
           name: rz-notebook-linux-x64
           path: rz-notebook/build/librz_notebook.so
+          if-no-files-found: error
 
   # ── Package plugin sources ─────────────────────────────────────────────
 
@@ -161,6 +181,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify source directories
+        run: |
+          test -d rz-notebook || { echo "::error::Missing rz-notebook directory"; exit 1; }
+          test -d cutter-notebook-plugin || { echo "::error::Missing cutter-notebook-plugin directory"; exit 1; }
 
       - name: Create archives
         run: |
@@ -173,6 +198,7 @@ jobs:
           path: |
             rz-notebook-source.zip
             cutter-notebook-plugin-source.zip
+          if-no-files-found: error
 
   # ── Publish GitHub Release ─────────────────────────────────────────────
 
