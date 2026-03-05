@@ -27,7 +27,7 @@ public:
 
 private:
     QString runCmd(const QString &cmd, bool *ok = nullptr);
-    bool ensureNotebookReady(QString *statusOut = nullptr);
+    bool ensureNotebookReady(QString *statusOut = nullptr, bool showDialog = true);
     void refreshDockStatus();
 
     void onServerStatus();

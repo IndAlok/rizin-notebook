@@ -30,7 +30,7 @@ QString CutterNotebookPlugin::runCmd(const QString &cmd, bool *ok)
     return out;
 }
 
-bool CutterNotebookPlugin::ensureNotebookReady(QString *statusOut)
+bool CutterNotebookPlugin::ensureNotebookReady(QString *statusOut, bool showDialog)
 {
     bool ok = false;
     QString out = runCmd("NBs", &ok);
@@ -38,12 +38,14 @@ bool CutterNotebookPlugin::ensureNotebookReady(QString *statusOut)
         *statusOut = out;
     }
     if (!ok || !out.contains("Notebook Server Status")) {
-        QMessageBox::warning(
-            nullptr,
-            "Notebook",
-            "Notebook backend is not ready.\n"
-            "Make sure `rz_notebook` is installed in rizin plugin path and the server can start.\n\n"
-            "Command output:\n" + out);
+        if (showDialog) {
+            QMessageBox::warning(
+                nullptr,
+                "Notebook",
+                "Notebook backend is not ready.\n"
+                "Make sure `rz_notebook` is installed in Cutter's rizin plugin path and built against a compatible rizin/Cutter version.\n\n"
+                "Command output:\n" + out);
+        }
         return false;
     }
     return true;
@@ -56,11 +58,13 @@ void CutterNotebookPlugin::refreshDockStatus()
     }
 
     QString out;
-    if (ensureNotebookReady(&out)) {
+    if (ensureNotebookReady(&out, false)) {
         QString url = runCmd("NBu").trimmed();
         statusLabel->setText(QString("Notebook: Online (%1)").arg(url));
+        statusLabel->setToolTip(out.trimmed());
     } else {
         statusLabel->setText("Notebook: Offline / NB commands unavailable");
+        statusLabel->setToolTip(out.trimmed());
     }
 }
 

@@ -57,11 +57,13 @@ type Rizin struct {
 }
 
 func RizinInfo(rizinbin string) ([]string, error) {
-	flags := [][]string{{"-version"}, {"--version"}, {"-v"}}
+	flags := [][]string{{"--version"}, {"-v"}}
 	var lastErr error
 
 	for _, args := range flags {
-		out, err := exec.Command(rizinbin, args...).CombinedOutput()
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		out, err := exec.CommandContext(ctx, rizinbin, args...).CombinedOutput()
+		cancel()
 		if err != nil {
 			lastErr = err
 			continue

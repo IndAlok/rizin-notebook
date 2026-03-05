@@ -123,7 +123,7 @@ func serverAddAPI(root *gin.RouterGroup) {
 // ─── Status ─────────────────────────────────────────────────
 
 func apiStatus(c *gin.Context) {
-	var rzversion string
+	rzversion := "unknown"
 	if info, err := notebook.info(); err == nil && len(info) > 0 {
 		rzversion = info[0]
 	}
@@ -134,6 +134,11 @@ func apiStatus(c *gin.Context) {
 	}
 	if resolved, err := exec.LookPath(rzpath); err == nil {
 		rzpath = resolved
+	}
+	if rzversion == "unknown" && rzpath != "" {
+		if info, err := RizinInfo(rzpath); err == nil && len(info) > 0 {
+			rzversion = info[0]
+		}
 	}
 
 	// Count open pipes.
