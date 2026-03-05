@@ -85,33 +85,51 @@ jobs:
       - name: Install vcpkg packages
         run: vcpkg install protobuf-c:x64-windows
 
-      - name: Install protobuf-c compiler
-        run: choco install protoc -y
-
-      - name: Install protoc-c plugin
-        shell: bash
-        run: |
-          # protoc-c is provided by vcpkg's protobuf-c package
-          echo "C:/vcpkg/installed/x64-windows/tools/protobuf-c" >> $GITHUB_PATH
-
       - name: Generate protobuf-c sources
-        shell: bash
+        shell: pwsh
         run: |
-          protoc-c --c_out=rz-notebook/src proto/notebook.proto || \
-          protoc --plugin=protoc-gen-c=$(which protoc-gen-c) --c_out=rz-notebook/src proto/notebook.proto
+          $vcpkg = $env:VCPKG_INSTALLATION_ROOT
+          $protoc = Join-Path $vcpkg "installed\x64-windows\tools\protobuf\protoc.exe"
+          $genC   = Join-Path $vcpkg "installed\x64-windows\tools\protobuf-c\protoc-gen-c.exe"
+          if (!(Test-Path $protoc)) {
+            Write-Host "::error::protoc.exe not found at $protoc"
+            Get-ChildItem -Path (Join-Path $vcpkg "installed\x64-windows\tools") -Recurse -Filter "protoc*" |
+              ForEach-Object { Write-Host $_.FullName }
+            exit 1
+          }
+          if (!(Test-Path $genC)) {
+            Write-Host "::error::protoc-gen-c.exe not found at $genC"
+            Get-ChildItem -Path (Join-Path $vcpkg "installed\x64-windows\tools") -Recurse -Filter "protoc*" |
+              ForEach-Object { Write-Host $_.FullName }
+            exit 1
+          }
+          & $protoc "--plugin=protoc-gen-c=$genC" -Iproto --c_out=rz-notebook/src notebook.proto
 
-      - name: Download Cutter SDK (for rizin headers)
-        shell: bash
+      - name: Download rizin SDK
+        shell: pwsh
         run: |
-          curl -L -o cutter.zip "https://github.com/rizinorg/cutter/releases/download/v2.4.1/Cutter-v2.4.1-Windows-x86_64.zip"
-          7z x cutter.zip -oCutter
+          Invoke-WebRequest -Uri "https://github.com/rizinorg/rizin/releases/download/v0.8.2/rizin-windows-shared64-v0.8.2.zip" `
+            -OutFile rizin.zip
+          7z x rizin.zip -orizin-sdk
+          $cfg = Get-ChildItem -Path rizin-sdk -Recurse -Filter "RizinConfig.cmake" |
+            Select-Object -First 1
+          if (!$cfg) {
+            Write-Host "::error::RizinConfig.cmake not found in rizin SDK"
+            Get-ChildItem -Path rizin-sdk -Recurse | Select-Object -First 80 |
+              ForEach-Object { Write-Host $_.FullName }
+            exit 1
+          }
+          $prefix = $cfg.Directory.Parent.Parent.Parent.FullName
+          Write-Host "Rizin prefix: $prefix"
+          Add-Content -Path $env:GITHUB_ENV -Value "RIZIN_PREFIX=$prefix"
 
       - name: Configure
-        run: >
-          cmake -S rz-notebook -B rz-notebook/build
-          -DCUTTER_SDK_DIR="${{ github.workspace }}/Cutter/Cutter-v2.4.1-Windows-x86_64"
-          -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
-          -G "Visual Studio 17 2022" -A x64
+        shell: pwsh
+        run: |
+          cmake -S rz-notebook -B rz-notebook/build `
+            "-DRizin_ROOT=$env:RIZIN_PREFIX" `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" `
+            -G "Visual Studio 17 2022" -A x64
 
       - name: Build
         run: cmake --build rz-notebook/build --config Release
@@ -131,17 +149,28 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo add-apt-repository -y ppa:rizinorg/rizin
           sudo apt-get update
-          sudo apt-get install -y librizin-dev protobuf-c-compiler libprotobuf-c-dev libcurl4-openssl-dev
+          sudo apt-get install -y meson ninja-build pkg-config \
+            protobuf-c-compiler libprotobuf-c-dev libcurl4-openssl-dev
+
+      - name: Build and install rizin
+        run: |
+          curl -L -o rizin-src.tar.xz \
+            "https://github.com/rizinorg/rizin/releases/download/v0.8.2/rizin-src-v0.8.2.tar.xz"
+          tar xf rizin-src.tar.xz
+          cd rizin-*/
+          meson setup build --prefix=/usr -Ddefault_library=shared
+          ninja -C build
+          sudo ninja -C build install
+          sudo ldconfig
 
       - name: Generate protobuf-c sources
-        run: protoc-c --c_out=rz-notebook/src proto/notebook.proto
+        run: protoc-c -Iproto --c_out=rz-notebook/src notebook.proto
 
       - name: Configure and build
         run: |
-          cmake -S rz-notebook -B rz-notebook/build
-          cmake --build rz-notebook/build --config Release
+          cmake -S rz-notebook -B rz-notebook/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build rz-notebook/build
 
       - uses: actions/upload-artifact@v4
         with:
