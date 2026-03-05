@@ -1,0 +1,199 @@
+// Protocol Buffers schema for rizin-notebook API.
+// All API endpoints accept and return protobuf-encoded messages.
+// Content-Type: application/x-protobuf
+
+syntax = "proto3";
+
+package notebook;
+
+option go_package = "github.com/rizinorg/rizin-notebook/pb";
+
+// ─── Core Data Model ────────────────────────────────────────
+
+// CellType enumerates the kinds of notebook cells.
+enum CellType {
+  CELL_TYPE_UNSPECIFIED = 0;
+  CELL_TYPE_COMMAND     = 1;
+  CELL_TYPE_SCRIPT      = 2;
+  CELL_TYPE_MARKDOWN    = 3;
+}
+
+// Cell represents a single notebook cell (command, script, or markdown).
+message Cell {
+  string   id       = 1;  // Unique cell identifier (8-char nonce).
+  CellType type     = 2;  // Cell type.
+  string   content  = 3;  // Command string, script source, or markdown text.
+  bytes    output   = 4;  // Raw execution output (ANSI bytes for cmd/script, rendered HTML for markdown).
+  int64    created  = 5;  // Unix timestamp of creation.
+  int64    executed = 6;  // Unix timestamp of last execution (0 if never).
+}
+
+// Page represents a notebook page containing cells and associated binary.
+message Page {
+  string id       = 1;  // Unique page identifier (32-char nonce).
+  string title    = 2;  // Human-readable page title.
+  string filename = 3;  // Original filename of the uploaded binary.
+  string binary   = 4;  // Storage key for the binary file.
+  bool   pipe     = 5;  // Whether a Rizin pipe is currently open.
+  int64  created  = 6;  // Unix timestamp of creation.
+  int64  modified = 7;  // Unix timestamp of last modification.
+  repeated Cell cells = 8;  // Ordered list of cells.
+}
+
+// ─── Request / Response Messages ────────────────────────────
+
+// StatusResponse is returned by the health/status endpoint.
+message StatusResponse {
+  string version       = 1;  // Notebook server version string.
+  string rizin_version = 2;  // Rizin version string.
+  string rizin_path    = 3;  // Resolved path to rizin binary.
+  string storage       = 4;  // Notebook data directory path.
+  int32  pages         = 5;  // Total number of pages.
+  int32  open_pipes    = 6;  // Number of currently open Rizin pipes.
+}
+
+// ListPagesResponse contains a summary of all pages.
+message ListPagesResponse {
+  repeated Page pages = 1;
+}
+
+// GetPageResponse returns a single page with all cells.
+message GetPageResponse {
+  Page page = 1;
+}
+
+// CreatePageRequest creates a new notebook page.
+message CreatePageRequest {
+  string title    = 1;  // Required: page title.
+  string filename = 2;  // Required: original binary filename.
+  bytes  binary   = 3;  // Required: binary file content.
+}
+
+// CreatePageResponse returns the created page.
+message CreatePageResponse {
+  Page page = 1;
+}
+
+// UpdatePageRequest modifies page metadata.
+message UpdatePageRequest {
+  string id    = 1;  // Required: page ID.
+  string title = 2;  // New title (if non-empty).
+}
+
+// DeletePageRequest removes a page and all its cells.
+message DeletePageRequest {
+  string id = 1;  // Required: page ID.
+}
+
+// ─── Cell Operations ────────────────────────────────────────
+
+// AddCellRequest adds a new cell to a page.
+message AddCellRequest {
+  string   page_id = 1;  // Required: parent page ID.
+  CellType type    = 2;  // Required: cell type.
+  string   content = 3;  // Command, script source, or initial markdown.
+}
+
+// AddCellResponse returns the created cell.
+message AddCellResponse {
+  Cell cell = 1;
+}
+
+// UpdateCellRequest modifies a cell's content.
+message UpdateCellRequest {
+  string page_id = 1;  // Required: parent page ID.
+  string cell_id = 2;  // Required: cell ID.
+  string content = 3;  // New content (command, script, or markdown).
+}
+
+// DeleteCellRequest removes a cell from a page.
+message DeleteCellRequest {
+  string page_id = 1;  // Required: parent page ID.
+  string cell_id = 2;  // Required: cell ID.
+}
+
+// GetCellOutputRequest retrieves the output of a cell.
+message GetCellOutputRequest {
+  string page_id = 1;
+  string cell_id = 2;
+}
+
+// GetCellOutputResponse returns raw output bytes.
+message GetCellOutputResponse {
+  bytes  output      = 1;  // Raw ANSI output bytes.
+  string html        = 2;  // Pre-rendered HTML (ANSI-to-HTML converted).
+  int64  executed_at = 3;  // Unix timestamp of execution.
+}
+
+// ─── Execution ──────────────────────────────────────────────
+
+// ExecCommandRequest executes a rizin command and stores result as a cell.
+message ExecCommandRequest {
+  string page_id = 1;  // Required: page ID (must have open pipe).
+  string command = 2;  // Required: rizin command string.
+}
+
+// ExecCommandResponse returns execution result.
+message ExecCommandResponse {
+  Cell   cell     = 1;  // The created command cell with output.
+  bool   success  = 2;  // Whether execution succeeded.
+  string error    = 3;  // Error message if failed.
+}
+
+// ExecScriptRequest executes a JavaScript script.
+message ExecScriptRequest {
+  string page_id = 1;  // Required: page ID.
+  string script  = 2;  // Required: JavaScript source code.
+}
+
+// ExecScriptResponse returns script execution result.
+message ExecScriptResponse {
+  Cell   cell    = 1;  // The created script cell with output.
+  bool   success = 2;
+  string error   = 3;
+}
+
+// ─── Pipe Management ────────────────────────────────────────
+
+// PipeRequest opens or closes a Rizin pipe for a page.
+message PipeRequest {
+  string page_id = 1;  // Required: page ID.
+}
+
+// PipeResponse reports pipe status.
+message PipeResponse {
+  bool   open  = 1;  // Whether the pipe is now open.
+  string error = 2;  // Error message if operation failed.
+}
+
+// ─── Settings ───────────────────────────────────────────────
+
+// SettingsResponse returns all environment variable settings.
+message SettingsResponse {
+  map<string, string> environment = 1;
+}
+
+// SetSettingRequest sets an environment variable.
+message SetSettingRequest {
+  string key   = 1;
+  string value = 2;
+}
+
+// DeleteSettingRequest removes an environment variable.
+message DeleteSettingRequest {
+  string key = 1;
+}
+
+// ─── Generic ────────────────────────────────────────────────
+
+// ErrorResponse is returned on any API error.
+message ErrorResponse {
+  int32  code    = 1;  // HTTP status code.
+  string message = 2;  // Human-readable error description.
+}
+
+// SuccessResponse is a generic acknowledgement.
+message SuccessResponse {
+  bool   ok      = 1;
+  string message = 2;
+}

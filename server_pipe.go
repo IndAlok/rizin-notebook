@@ -1,6 +1,3 @@
-/// \file server_pipe.go
-/// \brief HTTP handlers for opening/closing Rizin pipe connections.
-
 package main
 
 import (
@@ -22,8 +19,8 @@ func serverAddPipe(pipe *gin.RouterGroup) {
 			return
 		}
 
-		page := notebook.get(unique)
-		if page == nil {
+		page, err := store.GetPage(unique)
+		if err != nil || page == nil {
 			c.HTML(http.StatusNotFound, "error.tmpl", gin.H{
 				"root":  webroot,
 				"error": "page not found",

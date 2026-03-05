@@ -25,8 +25,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-notebook:
-    name: Build ${{ matrix.goos }}-${{ matrix.goarch }}
+
+  # ── Go server binaries (6 platform combos) ──────────────────────────────
+
+  build-server:
+    name: Server ${{ matrix.goos }}-${{ matrix.goarch }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -51,75 +54,146 @@ jobs:
       CGO_ENABLED: 0
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
           go-version: "1.24.x"
           cache: true
 
-      - name: Download deps
-        run: go mod download
+      - run: go mod download
 
-      - name: Build binary
+      - name: Build
         shell: bash
         run: |
-          OUT="rz-notebook-${GOOS}-${GOARCH}"
+          OUT="rizin-notebook-${{ matrix.goos }}-${{ matrix.goarch }}"
           go build -o "$OUT" -ldflags "-X main.NBVERSION=$(git rev-parse --short HEAD)"
-          if [ "$GOOS" = "windows" ]; then
-            mv "$OUT" "$OUT.exe"
-          fi
+          if [ "${{ matrix.goos }}" = "windows" ]; then mv "$OUT" "$OUT.exe"; fi
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: rz-notebook-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: rz-notebook-${{ matrix.goos }}-${{ matrix.goarch }}*
+          name: rizin-notebook-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: rizin-notebook-${{ matrix.goos }}-${{ matrix.goarch }}*
 
-  package-plugin-source:
-    name: Package plugin source
+  # ── Rizin core plugin (rz-notebook) — Windows ──────────────────────────
+
+  build-rz-plugin-windows:
+    name: rz-notebook (windows-x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install vcpkg packages
+        run: vcpkg install protobuf-c:x64-windows
+
+      - name: Install protobuf-c compiler
+        run: choco install protoc -y
+
+      - name: Install protoc-c plugin
+        shell: bash
+        run: |
+          # protoc-c is provided by vcpkg's protobuf-c package
+          echo "C:/vcpkg/installed/x64-windows/tools/protobuf-c" >> $GITHUB_PATH
+
+      - name: Generate protobuf-c sources
+        shell: bash
+        run: |
+          protoc-c --c_out=rz-notebook/src proto/notebook.proto || \
+          protoc --plugin=protoc-gen-c=$(which protoc-gen-c) --c_out=rz-notebook/src proto/notebook.proto
+
+      - name: Download Cutter SDK (for rizin headers)
+        shell: bash
+        run: |
+          curl -L -o cutter.zip "https://github.com/rizinorg/cutter/releases/download/v2.4.1/Cutter-v2.4.1-Windows-x86_64.zip"
+          7z x cutter.zip -oCutter
+
+      - name: Configure
+        run: >
+          cmake -S rz-notebook -B rz-notebook/build
+          -DCUTTER_SDK_DIR="${{ github.workspace }}/Cutter/Cutter-v2.4.1-Windows-x86_64"
+          -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+          -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        run: cmake --build rz-notebook/build --config Release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rz-notebook-windows-x64
+          path: rz-notebook/build/Release/rz_notebook.dll
+
+  # ── Rizin core plugin (rz-notebook) — Linux ────────────────────────────
+
+  build-rz-plugin-linux:
+    name: rz-notebook (linux-x64)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Create source archive
+      - name: Install dependencies
         run: |
+          sudo add-apt-repository -y ppa:rizinorg/rizin
+          sudo apt-get update
+          sudo apt-get install -y librizin-dev protobuf-c-compiler libprotobuf-c-dev libcurl4-openssl-dev
+
+      - name: Generate protobuf-c sources
+        run: protoc-c --c_out=rz-notebook/src proto/notebook.proto
+
+      - name: Configure and build
+        run: |
+          cmake -S rz-notebook -B rz-notebook/build
+          cmake --build rz-notebook/build --config Release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rz-notebook-linux-x64
+          path: rz-notebook/build/librz_notebook.so
+
+  # ── Package plugin sources ─────────────────────────────────────────────
+
+  package-sources:
+    name: Package plugin sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create archives
+        run: |
+          zip -r rz-notebook-source.zip rz-notebook proto
           zip -r cutter-notebook-plugin-source.zip cutter-notebook-plugin
 
-      - name: Upload plugin source
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: cutter-notebook-plugin-source
-          path: cutter-notebook-plugin-source.zip
+          name: plugin-sources
+          path: |
+            rz-notebook-source.zip
+            cutter-notebook-plugin-source.zip
+
+  # ── Publish GitHub Release ─────────────────────────────────────────────
 
   release:
     name: Publish Release
     runs-on: ubuntu-latest
-    needs: [build-notebook, package-plugin-source]
+    needs:
+      - build-server
+      - build-rz-plugin-windows
+      - build-rz-plugin-linux
+      - package-sources
     if: >-
       startsWith(github.ref, 'refs/tags/v') ||
       (github.event_name == 'workflow_dispatch' && inputs.publish_release)
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
 
-      - name: Resolve release metadata
+      - name: Resolve tag and name
         id: meta
         shell: bash
         run: |
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             TAG="${{ inputs.release_tag }}"
-            if [ -z "$TAG" ]; then
-              echo "release_tag is required when publish_release=true" >&2
-              exit 1
-            fi
+            if [ -z "$TAG" ]; then echo "release_tag is required" >&2; exit 1; fi
             NAME="${{ inputs.release_name }}"
-            if [ -z "$NAME" ]; then
-              NAME="$TAG"
-            fi
+            if [ -z "$NAME" ]; then NAME="$TAG"; fi
           else
             TAG="${GITHUB_REF_NAME}"
             NAME="$TAG"
@@ -127,8 +201,7 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
 
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ steps.meta.outputs.tag }}
@@ -137,5 +210,6 @@ jobs:
           draft: false
           prerelease: false
           files: |
+            rizin-notebook-*/*
             rz-notebook-*/*
-            cutter-notebook-plugin-source/*
+            plugin-sources/*

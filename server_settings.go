@@ -1,10 +1,8 @@
-/// \file server_settings.go
-/// \brief Settings handlers (environment variables).
-
 package main
 
 import (
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -14,9 +12,13 @@ func serverAddSettings(root *gin.RouterGroup) {
 
 	// View current settings.
 	root.GET("/settings", func(c *gin.Context) {
+		settings, _ := store.GetAllSettings()
+		if settings == nil {
+			settings = map[string]string{}
+		}
 		c.HTML(200, "settings.tmpl", gin.H{
 			"root":        webroot,
-			"environment": config.Environment,
+			"environment": settings,
 		})
 	})
 
@@ -30,11 +32,16 @@ func serverAddSettings(root *gin.RouterGroup) {
 			editkey = key
 		}
 
+		settings, _ := store.GetAllSettings()
+		if settings == nil {
+			settings = map[string]string{}
+		}
+
 		c.HTML(200, "settings-edit.tmpl", gin.H{
 			"root":    webroot,
 			"action":  "environment",
 			"editkey": editkey,
-			"data":    config.Environment,
+			"data":    settings,
 		})
 	})
 
@@ -51,7 +58,6 @@ func serverAddSettings(root *gin.RouterGroup) {
 	})
 }
 
-/// \brief Handles environment variable new/edit/delete form submissions.
 func handleEnvironmentSettings(c *gin.Context) {
 	subaction := strings.TrimSpace(c.PostForm("subaction"))
 	editkey := strings.TrimSpace(c.PostForm("editkey"))
@@ -61,22 +67,22 @@ func handleEnvironmentSettings(c *gin.Context) {
 	switch subaction {
 	case "new":
 		if len(key) > 0 {
-			config.SetEnvironment(key, value)
-			config.Save()
+			store.SetSetting(key, value)
+			os.Setenv(key, value)
 		}
 	case "edit":
 		if len(editkey) > 0 && len(key) > 0 {
-			// If the key name changed, remove the old one.
 			if editkey != key {
-				config.DelEnvironment(editkey)
+				store.DeleteSetting(editkey)
+				os.Unsetenv(editkey)
 			}
-			config.SetEnvironment(key, value)
-			config.Save()
+			store.SetSetting(key, value)
+			os.Setenv(key, value)
 		}
 	case "delete":
 		if len(editkey) > 0 {
-			config.DelEnvironment(editkey)
-			config.Save()
+			store.DeleteSetting(editkey)
+			os.Unsetenv(editkey)
 		}
 	}
 

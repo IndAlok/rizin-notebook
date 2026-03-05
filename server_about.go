@@ -1,6 +1,3 @@
-/// \file server_about.go
-/// \brief About page handler — displays app and Rizin version info.
-
 package main
 
 import (
@@ -10,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-/// \brief Registers GET /about with version info from `rizin -version`.
 func serverAddAbout(root *gin.RouterGroup) {
 	root.GET("/about", func(c *gin.Context) {
 		var rzversion, rzbuild string

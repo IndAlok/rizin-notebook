@@ -1,6 +1,3 @@
-/// \file nonce.go
-/// \brief Crypto nonce generation and validation for page/element IDs.
-
 package main
 
 import (
@@ -17,7 +14,6 @@ const PageNonceSize = 32
 // nonceAlphabet is the character set used for generating nonce strings.
 const nonceAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
-/// \brief Generates a cryptographically random alphanumeric string of length n.
 func Nonce(n int) string {
 	const modulo = byte(len(nonceAlphabet))
 	bytes := make([]byte, n)
@@ -30,7 +26,6 @@ func Nonce(n int) string {
 	return string(bytes)
 }
 
-/// \brief Validates nonce length and character set (prevents path traversal).
 func IsValidNonce(nonce string, expectedLen int) bool {
 	if len(nonce) != expectedLen {
 		return false

@@ -1,6 +1,3 @@
-/// \file server_assets.go
-/// \brief Template loading (embedded/debug), custom Gin HTMLRender, static serving.
-
 package main
 
 import (
@@ -42,7 +39,6 @@ var functionMap = template.FuncMap{
 
 /* ─── Custom template render ─────────────────────────────── */
 
-/// \brief Custom Gin HTMLRender wrapping a compiled template set with FuncMap.
 type customHTMLRender struct {
 	Template *template.Template
 }
@@ -55,7 +51,6 @@ func (r *customHTMLRender) Instance(name string, data interface{}) render.Render
 	}
 }
 
-/// \brief Single template render instance.
 type customHTMLRenderInstance struct {
 	Template *template.Template
 	Name     string
@@ -76,7 +71,6 @@ func (r *customHTMLRenderInstance) WriteContentType(w http.ResponseWriter) {
 
 /* ─── Template loading ───────────────────────────────────── */
 
-/// \brief Loads templates from embedded FS or debug directory.
 func setupTemplate(assets string, router *gin.Engine) (http.FileSystem, *template.Template) {
 	if len(assets) > 0 {
 		return setupTemplateDebug(assets, router)
@@ -146,7 +140,6 @@ func setupTemplateDebug(assets string, router *gin.Engine) (http.FileSystem, *te
 
 /* ─── Static file routes ─────────────────────────────────── */
 
-/// \brief Serves static files and provides debug template reload endpoint.
 func serverAddAssets(root *gin.RouterGroup, assets string, static http.FileSystem, templates *template.Template) {
 	root.StaticFS("/static", static)
 	root.GET("/favicon.ico", func(c *gin.Context) {

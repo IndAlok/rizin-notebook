@@ -1,6 +1,3 @@
-/// \file server_markdown.go
-/// \brief Markdown cell CRUD handlers.
-
 package main
 
 import (
@@ -23,8 +20,8 @@ func serverAddMarkdown(markdown *gin.RouterGroup) {
 			return
 		}
 
-		eunique := notebook.newmd(unique)
-		if eunique == "" {
+		eunique := Nonce(ElementNonceSize)
+		if err := store.AddCell(unique, eunique, "markdown", ""); err != nil {
 			c.HTML(http.StatusNotFound, "error.tmpl", gin.H{
 				"root":  webroot,
 				"error": "failed to create markdown cell",
@@ -46,15 +43,16 @@ func serverAddMarkdown(markdown *gin.RouterGroup) {
 			return
 		}
 
-		data, err := notebook.file(unique, eunique+".md")
-		if err != nil {
-			data = []byte("")
+		cell, _ := store.GetCell(unique, eunique)
+		var content string
+		if cell != nil {
+			content = cell.Content
 		}
 
 		c.HTML(200, "markdown-view.tmpl", gin.H{
 			"root": webroot,
 			"path": "/" + unique + "/" + eunique,
-			"html": string(data),
+			"html": content,
 		})
 	})
 
@@ -69,15 +67,16 @@ func serverAddMarkdown(markdown *gin.RouterGroup) {
 			return
 		}
 
-		data, err := notebook.file(unique, eunique+".md")
-		if err != nil {
-			data = []byte("")
+		cell, _ := store.GetCell(unique, eunique)
+		var content []byte
+		if cell != nil {
+			content = []byte(cell.Content)
 		}
 
 		c.HTML(200, "markdown-edit.tmpl", gin.H{
 			"root": webroot,
 			"path": "/" + unique + "/" + eunique,
-			"raw":  data,
+			"raw":  content,
 		})
 	})
 
@@ -93,7 +92,7 @@ func serverAddMarkdown(markdown *gin.RouterGroup) {
 		}
 
 		content := c.PostForm("markdown")
-		notebook.save([]byte(content), unique, eunique+".md")
+		store.UpdateCellContent(unique, eunique, content)
 
 		c.Redirect(http.StatusFound, webroot+"markdown/view/"+unique+"/"+eunique)
 	})
@@ -109,7 +108,7 @@ func serverAddMarkdown(markdown *gin.RouterGroup) {
 			return
 		}
 
-		notebook.deleteElem(unique, eunique, true)
+		store.DeleteCell(unique, eunique)
 
 		// Redirect to "deleted" pseudo-page so iframe can detect removal.
 		c.Redirect(http.StatusFound, webroot+"markdown/deleted")
@@ -123,7 +122,6 @@ func serverAddMarkdown(markdown *gin.RouterGroup) {
 
 /* ─── Helpers ─────────────────────────────────────────────── */
 
-/// \brief Extracts and validates page+element nonces from a "/:unique/:eunique" path.
 func parseElementPath(path string) (string, string, bool) {
 	parts := splitPath(path)
 	if len(parts) != 2 {
@@ -137,7 +135,6 @@ func parseElementPath(path string) (string, string, bool) {
 	return unique, eunique, true
 }
 
-/// \brief Splits URL path into non-empty components.
 func splitPath(path string) []string {
 	raw := strings.Split(path, "/")
 	var parts []string

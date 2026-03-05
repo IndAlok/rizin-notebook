@@ -1,6 +1,3 @@
-/// \file pipe.go
-/// \brief Rizin subprocess management via null-byte delimited rzpipe protocol.
-
 package main
 
 import (
@@ -20,7 +17,6 @@ import (
 // pipeReadTimeout is the maximum time to wait for a response from Rizin.
 const pipeReadTimeout = 5 * time.Minute
 
-/// \brief Describes a single argument for a Rizin command.
 type RizinCommandArg struct {
 	Type       string   `json:"type"`
 	Name       string   `json:"name"`
@@ -31,20 +27,17 @@ type RizinCommandArg struct {
 	Choices    []string `json:"choices,omitempty"`
 }
 
-/// \brief Single entry in a command detail group.
 type RizinCommandDetailEntry struct {
 	Text    string `json:"text,omitempty"`
 	Comment string `json:"comment,omitempty"`
 	Arg     string `json:"arg_str,omitempty"`
 }
 
-/// \brief Named group of detail entries for a command.
 type RizinCommandDetail struct {
 	Name    string                    `json:"name"`
 	Entries []RizinCommandDetailEntry `json:"entries,omitempty"`
 }
 
-/// \brief Rizin command metadata from `?*j` JSON output.
 type RizinCommand struct {
 	Command     string               `json:"cmd"`
 	ArgsStr     string               `json:"args_str"`
@@ -54,17 +47,15 @@ type RizinCommand struct {
 	Details     []RizinCommandDetail `json:"details,omitempty"`
 }
 
-/// \brief Active Rizin subprocess connected via rzpipe protocol.
 type Rizin struct {
 	pipe    *exec.Cmd
 	stdin   io.WriteCloser
-	stdout  io.ReadCloser
+	reader  *bufio.Reader
 	mutex   sync.Mutex
 	project string
 	closed  bool
 }
 
-/// \brief Runs `rizin -version` and returns output lines.
 func RizinInfo(rizinbin string) ([]string, error) {
 	flags := [][]string{{"-version"}, {"--version"}, {"-v"}}
 	var lastErr error
@@ -99,7 +90,6 @@ func RizinInfo(rizinbin string) ([]string, error) {
 	return nil, lastErr
 }
 
-/// \brief Runs `rizin -qc "?*j"` and returns parsed command metadata map.
 func RizinCommands(rizinbin string) (map[string]RizinCommand, error) {
 	out, err := exec.Command(rizinbin, "-qc", "?*j").Output()
 	if err != nil {
@@ -111,8 +101,7 @@ func RizinCommands(rizinbin string) (map[string]RizinCommand, error) {
 	return commands, err
 }
 
-/// \brief Launches a Rizin subprocess with flags: -2 -0 -e scr.color=3 -p project.
-/// Waits for initial null-byte prompt before returning.
+// Launches Rizin with -2 -0 -e scr.color=3 -p <project> and waits for initial null-byte.
 func NewRizin(rizinbin, file, project string) *Rizin {
 	args := []string{
 		"-2",
@@ -143,7 +132,7 @@ func NewRizin(rizinbin, file, project string) *Rizin {
 	rizin := &Rizin{
 		pipe:    pipe,
 		stdin:   stdin,
-		stdout:  stdout,
+		reader:  bufio.NewReader(stdout),
 		project: project,
 		closed:  false,
 	}
@@ -154,7 +143,7 @@ func NewRizin(rizinbin, file, project string) *Rizin {
 	go func(r *Rizin) {
 		r.mutex.Lock()
 		defer r.mutex.Unlock()
-		if _, err := bufio.NewReader(r.stdout).ReadString('\x00'); err != nil {
+		if _, err := r.reader.ReadString('\x00'); err != nil {
 			fmt.Println("pipe error: initial prompt:", err)
 		}
 	}(rizin)
@@ -162,7 +151,6 @@ func NewRizin(rizinbin, file, project string) *Rizin {
 	return rizin
 }
 
-/// \brief Sends a command via stdin and reads the null-byte-delimited response.
 func (r *Rizin) exec(cmd string) (string, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -187,7 +175,7 @@ func (r *Rizin) exec(cmd string) (string, error) {
 	ch := make(chan readResult, 1)
 
 	go func() {
-		buf, err := bufio.NewReader(r.stdout).ReadString('\x00')
+		buf, err := r.reader.ReadString('\x00')
 		if err != nil && err != io.EOF {
 			ch <- readResult{"", err}
 			return
@@ -207,7 +195,6 @@ func (r *Rizin) exec(cmd string) (string, error) {
 	}
 }
 
-/// \brief Saves project, sends q!, and waits for process exit (10s timeout).
 func (r *Rizin) close() {
 	if r.closed {
 		return

@@ -1,18 +1,22 @@
 # Rizin Notebook
 
-A notebook to write notes while using `rizin`.
+A notebook for writing notes while using rizin — think of it as the rizin equivalent of [jupyter notebook](https://jupyter.org/).
 
-If you want to compare it with something similar, you can call it as the rizin equivalent of [jupyter notebook](https://jupyter.org/)
-
-## Requirements
-
-Requires at least rizin version `0.2.0`
-
-## Screenshot
+Requires rizin 0.2.0 or later.
 
 ![rizin-notebook](https://raw.githubusercontent.com/rizinorg/rizin-notebook/master/.rizin-notebook.png)
 
-## Building
+## Components
+
+The project has three parts:
+
+- **Go server** — the main notebook application. Stores everything in SQLite, serves a web UI, exposes a protobuf REST API.
+- **rz-notebook** — a rizin core plugin (C). Adds `NB` commands to rizin so you can interact with the notebook from the rizin shell.
+- **cutter-notebook-plugin** — a Cutter plugin (C++/Qt6). Adds a Plugins → Notebook menu to Cutter that calls the `NB` commands.
+
+The plugins are optional. The Go server works standalone with just a browser.
+
+## Building the server
 
 ```bash
 go build -ldflags "-X main.NBVERSION=$(git rev-parse --short HEAD)"
@@ -24,82 +28,94 @@ go build -ldflags "-X main.NBVERSION=$(git rev-parse --short HEAD)"
 ./rizin-notebook
 ```
 
-Default URL: `http://127.0.0.1:8000/`
+Opens at http://127.0.0.1:8000/ by default.
 
-Useful flags:
+Flags:
 
-- `-bind 127.0.0.1:8000`
-- `-root /`
-- `-notebook /path/to/storage`
-- `-debug-assets /path/to/assets`
+```
+-bind 127.0.0.1:8000    address to listen on
+-root /                  URL path prefix
+-notebook /path/to/data  data directory (default: ~/.rizin-notebook)
+-debug-assets /path      load templates from disk instead of embedded
+-debug                   enable HTTP debug logs
+```
 
-Environment variable:
+Set `RIZIN_PATH` environment variable to use a specific rizin binary.
 
-- `RIZIN_PATH` to force a specific rizin executable.
+## Building the rizin plugin (rz-notebook)
 
-## Cutter Plugin
+The plugin needs protobuf-c and rizin headers. On Windows, vcpkg is the easiest way to get protobuf-c.
 
-This repository includes a native Cutter plugin in [cutter-notebook-plugin](cutter-notebook-plugin).
-
-What it does:
-
-- embeds rizin-notebook in a `QWebEngineView` dock widget,
-- starts/stops the server with `QProcess`,
-- supports auto/fixed port,
-- stores settings with `QSettings`,
-- syncs the currently opened Cutter binary into a notebook page.
-
-### Build the plugin
-
-You need Cutter + Rizin development packages and Qt6 (including WebEngine).
+### Generate protobuf-c files
 
 ```bash
-cd cutter-notebook-plugin
+protoc-c --c_out=rz-notebook/src proto/notebook.proto
+```
+
+This creates `notebook.pb-c.c` and `notebook.pb-c.h` in `rz-notebook/src/`.
+
+### Windows (with Cutter SDK for rizin headers)
+
+```powershell
+cd rz-notebook
+
+cmake -S . -B build ^
+  -DCUTTER_SDK_DIR="C:\path\to\Cutter-v2.4.1-Windows-x86_64" ^
+  -DCMAKE_TOOLCHAIN_FILE="C:\vcpkg\scripts\buildsystems\vcpkg.cmake" ^
+  -G "Visual Studio 17 2022" -A x64
+
+cmake --build build --config Release
+```
+
+### Windows (with rizin source tree)
+
+```powershell
+cd rz-notebook
+
+cmake -S . -B build ^
+  -DRIZIN_SOURCE_DIR="C:\path\to\rizin" ^
+  -DRIZIN_BUILD_DIR="C:\path\to\rizin\build" ^
+  -DCMAKE_TOOLCHAIN_FILE="C:\vcpkg\scripts\buildsystems\vcpkg.cmake" ^
+  -G "Visual Studio 17 2022" -A x64
+
+cmake --build build --config Release
+```
+
+### Linux
+
+```bash
+# install deps (debian/ubuntu)
+sudo apt install protobuf-c-compiler libprotobuf-c-dev librizin-dev libcurl4-openssl-dev
+
+cd rz-notebook
 cmake -S . -B build
 cmake --build build --config Release
+```
+
+### Install
+
+```bash
 cmake --install build --config Release
 ```
 
-The install step uses `Cutter_USER_PLUGINDIR` from Cutter's CMake config.
+Or copy `rz_notebook.dll` / `rz_notebook.so` to the rizin plugin directory:
 
-### Install without CMake install
+- Windows: `%APPDATA%\rizin\plugins`
+- Linux: `~/.local/lib/rizin/plugins`
 
-If you want to copy manually:
+Run `rizin -H RZ_USER_PLUGINS` to confirm the path.
 
-1. Build `CutterNotebookPlugin`.
-2. Copy the produced plugin library (`.dll` / `.so` / `.dylib`) to Cutter's native plugin directory.
-3. Ensure `rizin-notebook` binary is either:
-   - configured in the plugin settings dialog,
-   - available in `PATH`,
-   - or available via `RIZIN_NOTEBOOK_PATH`.
+## Building the Cutter plugin
 
-## GitHub Automation
+See [cutter-notebook-plugin/README.md](cutter-notebook-plugin/README.md).
 
-Workflows are in [.github/workflows](.github/workflows):
+## Releases
 
-- [ci.yaml](.github/workflows/ci.yaml): PR build check.
-- [build.yml](.github/workflows/build.yml): manual multi-platform artifact build + optional GitHub Release.
+GitHub Actions builds everything automatically. See `.github/workflows/build.yml`.
 
-### Trigger a manual build
+Two ways to make a release:
 
-On GitHub:
+1. Push a tag like `v1.0.0` — the workflow builds all artifacts and publishes a GitHub release.
+2. Go to Actions → Build Artifacts → Run workflow, check "Publish a GitHub release", and fill in the tag.
 
-1. Open **Actions**.
-2. Select **Build Artifacts**.
-3. Click **Run workflow**.
-
-This produces downloadable artifacts for each target platform plus a plugin source archive.
-
-### Trigger a release from the same workflow
-
-In the same **Run workflow** form:
-
-- set `publish_release` to `true`,
-- set `release_tag` (example: `v1.2.0`),
-- optionally set `release_name`.
-
-The workflow creates/updates the release and uploads all generated artifacts.
-
-### Tag-based release
-
-If you push a tag like `v1.2.0`, the workflow also builds and publishes a release automatically.
+The release includes server binaries for all platforms (windows/linux/darwin, amd64/arm64) and plugin source archives.

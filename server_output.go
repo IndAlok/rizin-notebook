@@ -1,6 +1,3 @@
-/// \file server_output.go
-/// \brief Command/script execution and output cell handlers.
-
 package main
 
 import (
@@ -22,9 +19,10 @@ func serverAddOutput(output *gin.RouterGroup) {
 			return
 		}
 
-		data, err := notebook.file(unique, eunique+".out")
-		if err != nil {
-			data = []byte("")
+		cell, _ := store.GetCell(unique, eunique)
+		var data []byte
+		if cell != nil {
+			data = cell.Output
 		}
 
 		// Convert ANSI escape sequences to HTML.
@@ -47,7 +45,7 @@ func serverAddOutput(output *gin.RouterGroup) {
 			return
 		}
 
-		notebook.deleteElem(unique, eunique, false)
+		store.DeleteCell(unique, eunique)
 
 		c.Redirect(http.StatusFound, webroot+"output/deleted")
 	})
@@ -123,9 +121,9 @@ func serverAddOutput(output *gin.RouterGroup) {
 			return
 		}
 
-		// Create a command element and save the output.
-		eunique := notebook.newcmd(unique, command)
-		if eunique == "" {
+		// Create a command cell and save the output in SQLite.
+		eunique := Nonce(ElementNonceSize)
+		if storeErr := store.AddCell(unique, eunique, "command", command); storeErr != nil {
 			c.HTML(http.StatusInternalServerError, "console-error.tmpl", gin.H{
 				"root":  webroot,
 				"error": "Failed to create command element",
@@ -133,7 +131,7 @@ func serverAddOutput(output *gin.RouterGroup) {
 			return
 		}
 
-		notebook.save([]byte(result), unique, eunique+".out")
+		store.UpdateCellOutput(unique, eunique, []byte(result))
 
 		// Redirect to "loaded" to trigger parent page reload.
 		c.Redirect(http.StatusFound, webroot+"output/loaded")
@@ -159,9 +157,9 @@ func serverAddOutput(output *gin.RouterGroup) {
 		// Get or open the pipe.
 		rz := notebook.open(unique, true)
 
-		// Create a script element.
-		eunique := notebook.newscript(unique, script)
-		if eunique == "" {
+		// Create a script cell in SQLite.
+		eunique := Nonce(ElementNonceSize)
+		if storeErr := store.AddCell(unique, eunique, "script", script); storeErr != nil {
 			c.HTML(http.StatusInternalServerError, "console-error.tmpl", gin.H{
 				"root":  webroot,
 				"error": "Failed to create script element",
@@ -174,7 +172,7 @@ func serverAddOutput(output *gin.RouterGroup) {
 		result, err := notebook.jsvm.exec(script, rz)
 
 		if err != nil {
-			notebook.save([]byte(err.Error()), unique, eunique+".out")
+			store.UpdateCellOutput(unique, eunique, []byte(err.Error()))
 			c.HTML(200, "console-error.tmpl", gin.H{
 				"root":  webroot,
 				"error": err.Error(),
@@ -182,7 +180,7 @@ func serverAddOutput(output *gin.RouterGroup) {
 			return
 		}
 
-		notebook.save([]byte(result), unique, eunique+".out")
+		store.UpdateCellOutput(unique, eunique, []byte(result))
 
 		// Redirect to "loaded" to trigger parent page reload.
 		c.Redirect(http.StatusFound, webroot+"output/loaded")

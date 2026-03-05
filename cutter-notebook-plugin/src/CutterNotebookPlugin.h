@@ -1,11 +1,9 @@
 #pragma once
 
 #include <QObject>
-
 #include <CutterPlugin.h>
 
-class MainWindow;
-class NotebookDockWidget;
+class QMenu;
 
 class CutterNotebookPlugin final : public QObject, public CutterPlugin {
     Q_OBJECT
@@ -15,14 +13,19 @@ class CutterNotebookPlugin final : public QObject, public CutterPlugin {
 public:
     void setupPlugin() override;
     void setupInterface(MainWindow *main) override;
-    void registerDecompilers() override;
     void terminate() override;
 
-    QString getName() override;
-    QString getAuthor() override;
-    QString getDescription() override;
-    QString getVersion() override;
+    QString getName() const override    { return "Notebook"; }
+    QString getAuthor() const override  { return "rizin-notebook"; }
+    QString getDescription() const override {
+        return "Integrates the rizin-notebook server with Cutter via NB commands.";
+    }
+    QString getVersion() const override { return "1.0.0"; }
 
 private:
-    NotebookDockWidget *widget = nullptr;
+    void onServerStatus();
+    void onListPages();
+    void onNewPage();
+    void onOpenBrowser();
+    void onSetUrl();
 };

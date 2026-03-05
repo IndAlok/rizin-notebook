@@ -1,6 +1,3 @@
-/// \file main.go
-/// \brief Entry point: CLI flags, config, HTTP server, graceful shutdown.
-
 package main
 
 import (
@@ -17,10 +14,11 @@ import (
 )
 
 var (
-	NBVERSION string ///< Set at build time via -ldflags.
-	webroot   string ///< URL path prefix for all routes.
+	NBVERSION string
+	webroot   string
 	notebook  *Notebook
 	config    *NotebookConfig
+	store     *Store
 )
 
 func usage() {
@@ -63,6 +61,25 @@ func main() {
 	config = NewNotebookConfig(dataDir)
 	config.UpdateEnvironment()
 
+	// Initialize SQLite store.
+	var err error
+	store, err = NewStore(dataDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: cannot open database: %v\n", err)
+		os.Exit(1)
+	}
+	defer store.Close()
+
+	// Import JSON page data into SQLite if present.
+	if migrated, merr := store.MigrateFromJSON(dataDir); merr != nil {
+		fmt.Printf("warning: JSON migration error: %v\n", merr)
+	} else if migrated > 0 {
+		fmt.Printf("Migrated %d pages from JSON to SQLite.\n", migrated)
+	}
+	if merr := store.MigrateSettings(dataDir); merr != nil {
+		fmt.Printf("warning: settings migration error: %v\n", merr)
+	}
+
 	// Allow RIZIN_PATH env var to override the default rizin binary location.
 	if loc := os.Getenv("RIZIN_PATH"); len(loc) > 1 {
 		rizinbin = loc
@@ -93,7 +110,6 @@ func main() {
 	fmt.Println("Server stopped.")
 }
 
-/// \brief Resolves notebook version from build metadata when -ldflags version is not set.
 func resolveNotebookVersion() string {
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
@@ -129,7 +145,6 @@ func resolveNotebookVersion() string {
 	return "dev-" + rev
 }
 
-/// \brief Starts the HTTP server in a goroutine; returns *http.Server for shutdown.
 func startServer(assets, bind string, debug bool) *http.Server {
 	router := setupRouter(assets, bind, debug)
 	srv := &http.Server{

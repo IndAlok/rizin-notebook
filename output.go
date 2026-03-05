@@ -1,6 +1,3 @@
-/// \file output.go
-/// \brief ANSI-to-HTML conversion and CSV table rendering.
-
 package main
 
 import (
@@ -308,14 +305,6 @@ var (
 	escapeRe = regexp.MustCompile(`^\[(;?\d+)+([A-Za-z])`)
 )
 
-/// \brief Strips null bytes and \r from raw Rizin output.
-func fromRawToString(raw []byte) string {
-	output := strings.TrimSuffix(string(raw), "\x00")
-	output = strings.ReplaceAll(output, "\r", "")
-	return strings.Trim(output, "\n")
-}
-
-/// \brief Parses output as CSV and renders as HTML table (≥2 columns required).
 func toCsv(output string) ([]byte, error) {
 	reader := csv.NewReader(strings.NewReader(output))
 	reader.Comma = ','
@@ -348,7 +337,6 @@ func toCsv(output string) ([]byte, error) {
 	return []byte(sb.String()), nil
 }
 
-/// \brief Converts ANSI escape-encoded text to styled HTML (16/256/RGB color, attributes).
 func toHtml(output string) []byte {
 	if output == "" {
 		return []byte{}

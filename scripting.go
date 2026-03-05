@@ -1,6 +1,3 @@
-/// \file scripting.go
-/// \brief Goja-based JS engine with rizin.cmd/cmdj and console.* APIs.
-
 package main
 
 import (
@@ -17,7 +14,6 @@ import (
 // scriptTimeout is the maximum execution time for a single script.
 const scriptTimeout = 5 * time.Minute
 
-/// \brief Goja JS runtime with Rizin pipe integration.
 type JavaScript struct {
 	semaphore *semaphore.Weighted
 	runtime   *goja.Runtime
@@ -25,7 +21,6 @@ type JavaScript struct {
 	output    strings.Builder
 }
 
-/// \brief Executes a Rizin command with color disabled for clean script output.
 func rizinCmd(command string, rz *Rizin) (string, error) {
 	if _, err := rz.exec("e scr.color=0"); err != nil {
 		return "", err
@@ -36,7 +31,6 @@ func rizinCmd(command string, rz *Rizin) (string, error) {
 	return result, err
 }
 
-/// \brief Converts a Go value to string (JSON-pretty for arrays/maps).
 func convertValue(ivalue interface{}) string {
 	switch value := ivalue.(type) {
 	case []interface{}:
@@ -50,7 +44,6 @@ func convertValue(ivalue interface{}) string {
 	}
 }
 
-/// \brief Creates the JS engine and registers rizin.* and console.* APIs.
 func NewJavaScript() *JavaScript {
 	runtime := goja.New()
 	if runtime == nil {
@@ -159,7 +152,6 @@ func NewJavaScript() *JavaScript {
 	return js
 }
 
-/// \brief Runs a script with semaphore-limited concurrency and timeout.
 func (js *JavaScript) exec(script string, rz *Rizin) (string, error) {
 	if !js.semaphore.TryAcquire(1) {
 		return "", errors.New("a script is already running")

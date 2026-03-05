@@ -1,13 +1,9 @@
-/// \file server.go
-/// \brief HTTP router setup and route group registration.
-
 package main
 
 import (
 	"github.com/gin-gonic/gin"
 )
 
-/// \brief Ensures webroot ends with a trailing slash.
 func sanitizeWebRoot(path string) string {
 	if len(path) < 2 {
 		return "/"
@@ -18,7 +14,6 @@ func sanitizeWebRoot(path string) string {
 	return path
 }
 
-/// \brief Creates and configures the Gin router with all route groups.
 func setupRouter(assets, bind string, debug bool) *gin.Engine {
 	gin.DisableConsoleColor()
 	if debug {
@@ -35,11 +30,29 @@ func setupRouter(assets, bind string, debug bool) *gin.Engine {
 
 	serverAddAssets(root, assets, static, templates)
 
-	// Index page: list all notebook pages.
+	// Index page: list all notebook pages
 	root.GET("/", func(c *gin.Context) {
+		pages, err := store.ListPages()
+		if err != nil {
+			c.HTML(500, "error.tmpl", gin.H{"root": webroot, "error": err.Error()})
+			return
+		}
+
+		list := make([]gin.H, len(pages))
+		for i, p := range pages {
+			notebook.mutex.Lock()
+			pipeOpen := notebook.pipes[p.ID] != nil
+			notebook.mutex.Unlock()
+			list[i] = gin.H{
+				"title":  p.Title,
+				"unique": p.ID,
+				"pipe":   pipeOpen,
+			}
+		}
+
 		c.HTML(200, "index.tmpl", gin.H{
 			"root": webroot,
-			"list": notebook.list(),
+			"list": list,
 		})
 	})
 
@@ -55,6 +68,9 @@ func setupRouter(assets, bind string, debug bool) *gin.Engine {
 
 	output := root.Group("/output")
 	serverAddOutput(output)
+
+	// Protobuf REST API.
+	serverAddAPI(root)
 
 	return router
 }
