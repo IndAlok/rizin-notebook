@@ -85,26 +85,6 @@ jobs:
       - name: Install vcpkg packages
         run: vcpkg install protobuf-c:x64-windows
 
-      - name: Generate protobuf-c sources
-        shell: pwsh
-        run: |
-          $vcpkg = $env:VCPKG_INSTALLATION_ROOT
-          $protoc = Join-Path $vcpkg "installed\x64-windows\tools\protobuf\protoc.exe"
-          $genC   = Join-Path $vcpkg "installed\x64-windows\tools\protobuf-c\protoc-gen-c.exe"
-          if (!(Test-Path $protoc)) {
-            Write-Host "::error::protoc.exe not found at $protoc"
-            Get-ChildItem -Path (Join-Path $vcpkg "installed\x64-windows\tools") -Recurse -Filter "protoc*" |
-              ForEach-Object { Write-Host $_.FullName }
-            exit 1
-          }
-          if (!(Test-Path $genC)) {
-            Write-Host "::error::protoc-gen-c.exe not found at $genC"
-            Get-ChildItem -Path (Join-Path $vcpkg "installed\x64-windows\tools") -Recurse -Filter "protoc*" |
-              ForEach-Object { Write-Host $_.FullName }
-            exit 1
-          }
-          & $protoc "--plugin=protoc-gen-c=$genC" -Iproto --c_out=rz-notebook/src notebook.proto
-
       - name: Download rizin SDK
         shell: pwsh
         run: |
@@ -151,7 +131,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y meson ninja-build pkg-config \
-            protobuf-c-compiler libprotobuf-c-dev libcurl4-openssl-dev
+            libprotobuf-c-dev libcurl4-openssl-dev
 
       - name: Build and install rizin
         run: |
@@ -163,9 +143,6 @@ jobs:
           ninja -C build
           sudo ninja -C build install
           sudo ldconfig
-
-      - name: Generate protobuf-c sources
-        run: protoc-c -Iproto --c_out=rz-notebook/src notebook.proto
 
       - name: Configure and build
         run: |
