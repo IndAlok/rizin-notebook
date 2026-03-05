@@ -118,4 +118,10 @@ Two ways to make a release:
 1. Push a tag like `v1.0.0` — the workflow builds all artifacts and publishes a GitHub release.
 2. Go to Actions → Build Artifacts → Run workflow, check "Publish a GitHub release", and fill in the tag.
 
-The release includes server binaries for all platforms (windows/linux/darwin, amd64/arm64) and plugin source archives.
+The release includes:
+
+- server binaries for all platforms (windows/linux/darwin, amd64/arm64)
+- `rz_notebook` plugin binaries (Windows + Linux)
+- `CutterNotebookPlugin.dll` (Windows)
+- plugin source archives
+- `SHA256SUMS.txt` for integrity verification

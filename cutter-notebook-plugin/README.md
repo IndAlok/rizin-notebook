@@ -63,9 +63,15 @@ Or copy the built file manually:
 - Linux: `~/.local/share/rizin/cutter/plugins/native`
 - macOS: `~/Library/Application Support/rizin/cutter/plugins/native`
 
+The file you copy must be `CutterNotebookPlugin.dll` on Windows.
+
+GitHub release artifacts include a prebuilt Windows plugin binary (`CutterNotebookPlugin.dll`).
+
 ## Troubleshooting
 
 **Plugin doesn't load** — make sure the DLL is in the right directory and was built against the same Cutter/Qt version you're running.
+
+**Wrong DLL in Cutter folder** — Cutter needs `CutterNotebookPlugin.dll`. The file `rz_notebook.dll` is a rizin core plugin and belongs in `%APPDATA%\rizin\plugins`, not Cutter's native plugin directory.
 
 **NB commands not found** — the rz-notebook core plugin (`rz_notebook.dll` / `.so`) needs to be in rizin's plugin path. Run `rizin -H RZ_USER_PLUGINS` to check.
 

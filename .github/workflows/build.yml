@@ -24,6 +24,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   # ── Go server binaries (6 platform combos) ──────────────────────────────
 
@@ -174,6 +177,79 @@ jobs:
           path: rz-notebook/build/librz_notebook.so
           if-no-files-found: error
 
+  # ── Cutter plugin (cutter-notebook-plugin) — Windows ──────────────────
+
+  build-cutter-plugin-windows:
+    name: cutter-notebook-plugin (windows-x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify plugin sources
+        shell: pwsh
+        run: |
+          if (!(Test-Path "cutter-notebook-plugin\CMakeLists.txt")) {
+            Write-Host "::error::cutter-notebook-plugin sources are missing from repository checkout."
+            Get-ChildItem -Path .
+            exit 1
+          }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Qt SDK
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install aqtinstall
+          $qtOut = Join-Path $env:RUNNER_TEMP "Qt"
+          python -m aqt install-qt windows desktop 6.7.2 win64_msvc2019_64 --outputdir $qtOut
+          $qtDir = Join-Path $qtOut "6.7.2\msvc2019_64"
+          if (!(Test-Path $qtDir)) {
+            Write-Host "::error::Qt SDK install failed: $qtDir not found"
+            exit 1
+          }
+          Add-Content -Path $env:GITHUB_ENV -Value "QT_DIR=$qtDir"
+
+      - name: Download Cutter SDK
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/rizinorg/cutter/releases/download/v2.4.1/Cutter-v2.4.1-Windows-x86_64.zip" `
+            -OutFile cutter.zip
+          7z x cutter.zip -oCutter
+          $cutterRoot = Get-ChildItem -Path Cutter -Directory | Select-Object -First 1
+          if (!$cutterRoot) {
+            Write-Host "::error::Failed to extract Cutter SDK"
+            exit 1
+          }
+          $hdr = Join-Path $cutterRoot.FullName "include\cutter\plugins\CutterPlugin.h"
+          if (!(Test-Path $hdr)) {
+            Write-Host "::error::Invalid Cutter SDK root: $($cutterRoot.FullName)"
+            exit 1
+          }
+          Add-Content -Path $env:GITHUB_ENV -Value "CUTTER_DIR=$($cutterRoot.FullName)"
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S cutter-notebook-plugin -B cutter-notebook-plugin/build `
+            "-DCutter_DIR=$env:CUTTER_DIR" `
+            "-DCMAKE_PREFIX_PATH=$env:QT_DIR" `
+            -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        run: cmake --build cutter-notebook-plugin/build --config Release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cutter-notebook-plugin-windows-x64
+          path: |
+            cutter-notebook-plugin/build/Release/CutterNotebookPlugin.dll
+            cutter-notebook-plugin/build/Release/CutterNotebookPlugin.pdb
+          if-no-files-found: error
+
   # ── Package plugin sources ─────────────────────────────────────────────
 
   package-sources:
@@ -200,6 +276,33 @@ jobs:
             cutter-notebook-plugin-source.zip
           if-no-files-found: error
 
+  # ── Package checksums manifest ───────────────────────────────────────
+
+  package-checksums:
+    name: Package checksums
+    runs-on: ubuntu-latest
+    needs:
+      - build-server
+      - build-rz-plugin-windows
+      - build-rz-plugin-linux
+      - build-cutter-plugin-windows
+      - package-sources
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Generate SHA256SUMS
+        shell: bash
+        run: |
+          find . -type f \
+            ! -name "SHA256SUMS.txt" \
+            -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-checksums
+          path: SHA256SUMS.txt
+          if-no-files-found: error
+
   # ── Publish GitHub Release ─────────────────────────────────────────────
 
   release:
@@ -209,7 +312,9 @@ jobs:
       - build-server
       - build-rz-plugin-windows
       - build-rz-plugin-linux
+      - build-cutter-plugin-windows
       - package-sources
+      - package-checksums
     if: >-
       startsWith(github.ref, 'refs/tags/v') ||
       (github.event_name == 'workflow_dispatch' && inputs.publish_release)
@@ -243,4 +348,6 @@ jobs:
           files: |
             rizin-notebook-*/*
             rz-notebook-*/*
+            cutter-notebook-plugin-*/*
             plugin-sources/*
+            release-checksums/*
