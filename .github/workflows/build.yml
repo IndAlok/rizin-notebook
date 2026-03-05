@@ -25,7 +25,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-
   # ── Go server binaries (6 platform combos) ──────────────────────────────
 
   build-server:
