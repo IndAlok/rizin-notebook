@@ -10,9 +10,16 @@
 #include <shlobj.h>
 #else
 #include <unistd.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <errno.h>
+#endif
+
+#ifndef _WIN32
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 #endif
 
 // ── Health Check ────────────────────────────────────────────────────────
@@ -44,7 +51,11 @@ static bool file_exists(const char *path) {
 }
 
 char *nb_server_find_executable(void) {
+	#ifdef _WIN32
 	char buf[MAX_PATH + 1];
+	#else
+	char buf[PATH_MAX + 1];
+	#endif
 
 #ifdef _WIN32
 	// 1. Next to the plugin DLL (same directory as rz_notebook.dll).
@@ -170,8 +181,11 @@ static bool start_server_process(const char *exe_path) {
 		// Child process: become daemon.
 		setsid();
 		// Redirect stdout/stderr to /dev/null.
-		freopen("/dev/null", "w", stdout);
-		freopen("/dev/null", "w", stderr);
+		FILE *out = freopen("/dev/null", "w", stdout);
+		FILE *err = freopen("/dev/null", "w", stderr);
+		if (!out || !err) {
+			_exit(127);
+		}
 		execl(exe_path, exe_path, (char *)NULL);
 		_exit(127);
 	}
