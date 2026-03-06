@@ -370,6 +370,9 @@ func (s *Store) GetBinaryForPipe(pageID, tempDir string) (string, error) {
 	if err != nil || page == nil {
 		return "", fmt.Errorf("page not found: %s", pageID)
 	}
+	if page.Binary == "" {
+		return "", fmt.Errorf("page has no binary attached: %s", pageID)
+	}
 
 	data, err := s.GetBinary(pageID, page.Binary)
 	if err != nil || data == nil {

@@ -12,7 +12,8 @@ type Notebook struct {
 	pipes   map[string]*Rizin
 	jsvm    *JavaScript
 	rizin   string
-	cmds    map[string]RizinCommand
+	cmds           map[string]RizinCommand
+	rizinInfoCache []string
 }
 
 func NewNotebook(storage, rizinbin string) *Notebook {
@@ -26,7 +27,8 @@ func NewNotebook(storage, rizinbin string) *Notebook {
 		pipes:   map[string]*Rizin{},
 		jsvm:    jsvm,
 		rizin:   rizinbin,
-		cmds:    map[string]RizinCommand{},
+		cmds:           map[string]RizinCommand{},
+		rizinInfoCache: nil,
 	}
 }
 
@@ -37,15 +39,41 @@ func (n *Notebook) LoadCommands() {
 	cmds, err := RizinCommands(n.rizin)
 	if err != nil {
 		fmt.Printf("warning: failed to load rizin commands: %v\n", err)
-		return
 	}
+
+	info, infoErr := RizinInfo(n.rizin)
+	if infoErr != nil {
+		fmt.Printf("warning: failed to load rizin info: %v\n", infoErr)
+	}
+
 	n.mutex.Lock()
-	n.cmds = cmds
+	if cmds != nil {
+		n.cmds = cmds
+	}
+	if len(info) > 0 {
+		n.rizinInfoCache = append([]string(nil), info...)
+	}
 	n.mutex.Unlock()
 }
 
 func (n *Notebook) info() ([]string, error) {
-	return RizinInfo(n.rizin)
+	n.mutex.Lock()
+	if len(n.rizinInfoCache) > 0 {
+		info := append([]string(nil), n.rizinInfoCache...)
+		n.mutex.Unlock()
+		return info, nil
+	}
+	n.mutex.Unlock()
+
+	info, err := RizinInfo(n.rizin)
+	if err != nil {
+		return nil, err
+	}
+
+	n.mutex.Lock()
+	n.rizinInfoCache = append([]string(nil), info...)
+	n.mutex.Unlock()
+	return info, nil
 }
 
 // Returns existing pipe or opens a new one, extracting the binary to a temp file.

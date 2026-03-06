@@ -45,6 +45,21 @@ static const char *cell_type_str(Notebook__CellType t) {
 	}
 }
 
+static const char *nb_current_filename(RzCore *core) {
+	if (!core || !core->io) {
+		return NULL;
+	}
+	int cur_fd = rz_io_fd_get_current(core->io);
+	if (cur_fd < 0) {
+		return NULL;
+	}
+	RzIODesc *cur_desc = rz_io_desc_get(core->io, cur_fd);
+	if (!cur_desc || !cur_desc->name || !*cur_desc->name) {
+		return NULL;
+	}
+	return cur_desc->name;
+}
+
 // ── Command Handlers ────────────────────────────────────────────────────
 
 static RzCmdStatus cmd_nb_status(RzCore *core, int argc, const char **argv) {
@@ -142,6 +157,9 @@ static RzCmdStatus cmd_nb_new(RzCore *core, int argc, const char **argv) {
 
 	const char *title = argv[1];
 	const char *filename = argc > 2 ? argv[2] : NULL;
+	if (!filename || !*filename) {
+		filename = nb_current_filename(core);
+	}
 
 	// If a binary file is specified, try to read it.
 	uint8_t *bin_data = NULL;
@@ -150,14 +168,8 @@ static RzCmdStatus cmd_nb_new(RzCore *core, int argc, const char **argv) {
 		size_t rlen = 0;
 		bin_data = (uint8_t *)rz_file_slurp(filename, &rlen);
 		if (!bin_data) {
-			rz_cons_printf("Warning: could not read '%s', using current binary\n", filename);
-			if (core->io) {
-				int cur_fd = rz_io_fd_get_current(core->io);
-				RzIODesc *cur_desc = rz_io_desc_get(core->io, cur_fd);
-				filename = cur_desc ? cur_desc->name : NULL;
-			} else {
-				filename = NULL;
-			}
+			rz_cons_printf("Warning: could not read '%s', creating page without attached binary\n", filename);
+			filename = NULL;
 		} else {
 			bin_len = rlen;
 		}

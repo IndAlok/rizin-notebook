@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"io"
 	"net/http"
 	"os"
@@ -121,6 +122,18 @@ func serverAddAPI(root *gin.RouterGroup) {
 	api.GET("/settings", apiGetSettings)
 	api.PUT("/settings", apiSetSetting)
 	api.DELETE("/settings/:key", apiDeleteSetting)
+
+	jsonAPI := api.Group("/json")
+	jsonAPI.GET("/status", apiJSONStatus)
+	jsonAPI.GET("/pages", apiJSONListPages)
+	jsonAPI.GET("/pages/:id", apiJSONGetPage)
+	jsonAPI.POST("/pages", apiJSONCreatePage)
+	jsonAPI.DELETE("/pages/:id", apiJSONDeletePage)
+	jsonAPI.POST("/pages/:id/cells", apiJSONAddCell)
+	jsonAPI.POST("/pages/:id/exec", apiJSONExecCommand)
+	jsonAPI.POST("/pages/:id/script", apiJSONExecScript)
+	jsonAPI.POST("/pages/:id/pipe/open", apiJSONPipeOpen)
+	jsonAPI.POST("/pages/:id/pipe/close", apiJSONPipeClose)
 }
 
 // ─── Health Check ───────────────────────────────────────────
@@ -148,11 +161,6 @@ func apiStatus(c *gin.Context) {
 	if resolved, err := exec.LookPath(rzpath); err == nil {
 		rzpath = resolved
 	}
-	if rzversion == "unknown" && rzpath != "" {
-		if info, err := RizinInfo(rzpath); err == nil && len(info) > 0 {
-			rzversion = info[0]
-		}
-	}
 
 	// Count open pipes.
 	notebook.mutex.Lock()
@@ -167,6 +175,323 @@ func apiStatus(c *gin.Context) {
 		Pages:        int32(store.PageCount()),
 		OpenPipes:    int32(openPipes),
 	})
+}
+
+func cellRowToJSON(c *CellRow) gin.H {
+	return gin.H{
+		"id":       c.ID,
+		"type":     c.Type,
+		"content":  c.Content,
+		"output":   string(c.Output),
+		"created":  c.Created,
+		"executed": c.Executed,
+	}
+}
+
+func pageRowToJSON(p *PageRow, pipeOpen bool) gin.H {
+	return gin.H{
+		"id":       p.ID,
+		"title":    p.Title,
+		"filename": p.Filename,
+		"binary":   p.Binary,
+		"pipe":     pipeOpen,
+		"created":  p.Created,
+		"modified": p.Modified,
+	}
+}
+
+func jsonStatusPayload() gin.H {
+	rzversion := "unknown"
+	if info, err := notebook.info(); err == nil && len(info) > 0 {
+		rzversion = info[0]
+	}
+
+	rzpath := os.Getenv("RIZIN_PATH")
+	if len(rzpath) < 1 {
+		rzpath = notebook.rizin
+	}
+	if resolved, err := exec.LookPath(rzpath); err == nil {
+		rzpath = resolved
+	}
+
+	notebook.mutex.Lock()
+	openPipes := len(notebook.pipes)
+	notebook.mutex.Unlock()
+
+	return gin.H{
+		"version":       NBVERSION,
+		"rizin_version": rzversion,
+		"rizin_path":    rzpath,
+		"storage":       notebook.storage,
+		"pages":         store.PageCount(),
+		"open_pipes":    openPipes,
+	}
+}
+
+func apiJSONStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, jsonStatusPayload())
+}
+
+func apiJSONListPages(c *gin.Context) {
+	pages, err := store.ListPages()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	list := make([]gin.H, 0, len(pages))
+	for i := range pages {
+		p := &pages[i]
+		notebook.mutex.Lock()
+		pipeOpen := notebook.pipes[p.ID] != nil
+		notebook.mutex.Unlock()
+
+		item := pageRowToJSON(p, pipeOpen)
+		cells, _ := store.ListCells(p.ID)
+		item["cells_count"] = len(cells)
+		list = append(list, item)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"pages": list})
+}
+
+func apiJSONGetPage(c *gin.Context) {
+	id := c.Param("id")
+	if !IsValidNonce(id, PageNonceSize) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page identifier"})
+		return
+	}
+
+	page, err := store.GetPage(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if page == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "page not found"})
+		return
+	}
+
+	notebook.mutex.Lock()
+	pipeOpen := notebook.pipes[id] != nil
+	notebook.mutex.Unlock()
+
+	resp := pageRowToJSON(page, pipeOpen)
+	cells, err := store.ListCells(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	items := make([]gin.H, 0, len(cells))
+	for i := range cells {
+		items = append(items, cellRowToJSON(&cells[i]))
+	}
+	resp["cells"] = items
+	c.JSON(http.StatusOK, gin.H{"page": resp})
+}
+
+func apiJSONCreatePage(c *gin.Context) {
+	var req struct {
+		Title        string `json:"title"`
+		Filename     string `json:"filename"`
+		BinaryBase64 string `json:"binary_base64"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
+		return
+	}
+	if req.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
+		return
+	}
+
+	var binary []byte
+	if req.BinaryBase64 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(req.BinaryBase64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid binary_base64: " + err.Error()})
+			return
+		}
+		binary = decoded
+	}
+
+	filename := req.Filename
+	if filename == "" && len(binary) > 0 {
+		filename = req.Title
+	}
+
+	pageID := Nonce(PageNonceSize)
+	binaryKey := ""
+	if len(binary) > 0 {
+		binaryKey = Nonce(ElementNonceSize)
+	}
+
+	if err := store.CreatePage(pageID, req.Title, filename, binaryKey); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create page: " + err.Error()})
+		return
+	}
+	if binaryKey != "" {
+		if err := store.SaveBinary(pageID, binaryKey, binary); err != nil {
+			store.DeletePage(pageID)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save binary: " + err.Error()})
+			return
+		}
+	}
+
+	page, _ := store.GetPage(pageID)
+	c.JSON(http.StatusCreated, gin.H{"page": pageRowToJSON(page, false)})
+}
+
+func apiJSONDeletePage(c *gin.Context) {
+	id := c.Param("id")
+	if !IsValidNonce(id, PageNonceSize) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page identifier"})
+		return
+	}
+	notebook.closePipe(id)
+	if err := store.DeletePage(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete page: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func apiJSONAddCell(c *gin.Context) {
+	pageID := c.Param("id")
+	if !IsValidNonce(pageID, PageNonceSize) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page identifier"})
+		return
+	}
+	var req struct {
+		Type    string `json:"type"`
+		Content string `json:"content"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
+		return
+	}
+	if req.Content == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "content is required"})
+		return
+	}
+	if req.Type != "command" && req.Type != "script" && req.Type != "markdown" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid cell type"})
+		return
+	}
+	cellID := Nonce(ElementNonceSize)
+	if err := store.AddCell(pageID, cellID, req.Type, req.Content); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create cell: " + err.Error()})
+		return
+	}
+	cell, _ := store.GetCell(pageID, cellID)
+	c.JSON(http.StatusCreated, gin.H{"cell": cellRowToJSON(cell)})
+}
+
+func apiJSONExecCommand(c *gin.Context) {
+	pageID := c.Param("id")
+	if !IsValidNonce(pageID, PageNonceSize) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page identifier"})
+		return
+	}
+	var req struct {
+		Command string `json:"command"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
+		return
+	}
+	if req.Command == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "command is required"})
+		return
+	}
+	rz := notebook.open(pageID, true)
+	if rz == nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "error": "failed to open Rizin pipe; check binary file and rizin installation"})
+		return
+	}
+	result, err := rz.exec(req.Command)
+	cellID := Nonce(ElementNonceSize)
+	if storeErr := store.AddCell(pageID, cellID, "command", req.Command); storeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create cell: " + storeErr.Error()})
+		return
+	}
+	output := []byte(result)
+	if err != nil {
+		output = []byte(err.Error())
+	}
+	if storeErr := store.UpdateCellOutput(pageID, cellID, output); storeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save output: " + storeErr.Error()})
+		return
+	}
+	cell, _ := store.GetCell(pageID, cellID)
+	c.JSON(http.StatusOK, gin.H{"success": err == nil, "error": errorString(err), "cell": cellRowToJSON(cell)})
+}
+
+func apiJSONExecScript(c *gin.Context) {
+	pageID := c.Param("id")
+	if !IsValidNonce(pageID, PageNonceSize) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page identifier"})
+		return
+	}
+	var req struct {
+		Script string `json:"script"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
+		return
+	}
+	if req.Script == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "script is required"})
+		return
+	}
+	rz := notebook.open(pageID, true)
+	cellID := Nonce(ElementNonceSize)
+	if storeErr := store.AddCell(pageID, cellID, "script", req.Script); storeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create cell: " + storeErr.Error()})
+		return
+	}
+	result, err := notebook.jsvm.exec(req.Script, rz)
+	output := []byte(result)
+	if err != nil {
+		output = []byte(err.Error())
+	}
+	if storeErr := store.UpdateCellOutput(pageID, cellID, output); storeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save output: " + storeErr.Error()})
+		return
+	}
+	cell, _ := store.GetCell(pageID, cellID)
+	c.JSON(http.StatusOK, gin.H{"success": err == nil, "error": errorString(err), "cell": cellRowToJSON(cell)})
+}
+
+func apiJSONPipeOpen(c *gin.Context) {
+	pageID := c.Param("id")
+	if !IsValidNonce(pageID, PageNonceSize) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page identifier"})
+		return
+	}
+	rz := notebook.open(pageID, true)
+	if rz == nil {
+		c.JSON(http.StatusOK, gin.H{"open": false, "error": "failed to open Rizin pipe; check binary file and rizin installation"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"open": true})
+}
+
+func apiJSONPipeClose(c *gin.Context) {
+	pageID := c.Param("id")
+	if !IsValidNonce(pageID, PageNonceSize) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page identifier"})
+		return
+	}
+	notebook.closePipe(pageID)
+	c.JSON(http.StatusOK, gin.H{"open": false})
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 // ─── Pages ──────────────────────────────────────────────────
@@ -248,27 +573,28 @@ func apiCreatePage(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "title is required")
 		return
 	}
-	if req.Filename == "" {
-		respondError(c, http.StatusBadRequest, "filename is required")
-		return
-	}
-	if len(req.Binary) == 0 {
-		respondError(c, http.StatusBadRequest, "binary data is required")
-		return
+	filename := req.Filename
+	if filename == "" && len(req.Binary) > 0 {
+		filename = req.Title
 	}
 
 	pageID := Nonce(PageNonceSize)
-	binaryKey := Nonce(ElementNonceSize)
+	binaryKey := ""
+	if len(req.Binary) > 0 {
+		binaryKey = Nonce(ElementNonceSize)
+	}
 
-	if err := store.CreatePage(pageID, req.Title, req.Filename, binaryKey); err != nil {
+	if err := store.CreatePage(pageID, req.Title, filename, binaryKey); err != nil {
 		respondError(c, http.StatusInternalServerError, "failed to create page: "+err.Error())
 		return
 	}
 
-	if err := store.SaveBinary(pageID, binaryKey, req.Binary); err != nil {
-		store.DeletePage(pageID)
-		respondError(c, http.StatusInternalServerError, "failed to save binary: "+err.Error())
-		return
+	if binaryKey != "" {
+		if err := store.SaveBinary(pageID, binaryKey, req.Binary); err != nil {
+			store.DeletePage(pageID)
+			respondError(c, http.StatusInternalServerError, "failed to save binary: "+err.Error())
+			return
+		}
 	}
 
 	page, _ := store.GetPage(pageID)
@@ -628,5 +954,3 @@ func apiDeleteSetting(c *gin.Context) {
 	os.Unsetenv(key)
 	respondProto(c, http.StatusOK, &pb.SuccessResponse{Ok: true, Message: "setting deleted"})
 }
-
-
