@@ -9,7 +9,7 @@ on:
         default: false
         type: boolean
       release_tag:
-        description: "Release tag (required if publish_release=true)"
+        description: "Release tag or version label (required if publish_release=true)"
         required: false
         type: string
       release_name:
@@ -323,28 +323,69 @@ jobs:
 
       - name: Resolve tag and name
         id: meta
-        shell: bash
+        shell: pwsh
+        env:
+          RAW_RELEASE_TAG: ${{ inputs.release_tag }}
+          RAW_RELEASE_NAME: ${{ inputs.release_name }}
         run: |
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.release_tag }}"
-            if [ -z "$TAG" ]; then echo "release_tag is required" >&2; exit 1; fi
-            NAME="${{ inputs.release_name }}"
-            if [ -z "$NAME" ]; then NAME="$TAG"; fi
-          else
-            TAG="${GITHUB_REF_NAME}"
-            NAME="$TAG"
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          $tag = ""
+          $name = ""
+          $targetCommitish = ""
+
+          if ($env:GITHUB_EVENT_NAME -eq "workflow_dispatch") {
+            $requestedTag = $env:RAW_RELEASE_TAG.Trim()
+            if ([string]::IsNullOrWhiteSpace($requestedTag)) {
+              Write-Error "release_tag is required when publish_release=true"
+              exit 1
+            }
+
+            $name = $env:RAW_RELEASE_NAME.Trim()
+            if ([string]::IsNullOrWhiteSpace($name)) {
+              $name = $requestedTag
+            }
+
+            $normalizedTag = $requestedTag
+            if (-not $normalizedTag.StartsWith("v")) {
+              $normalizedTag = "v$normalizedTag"
+            }
+
+            $normalizedTag = [regex]::Replace($normalizedTag.Trim(), "\s+", "-")
+            $normalizedTag = [regex]::Replace($normalizedTag, "[^0-9A-Za-z._/-]", "-")
+            $normalizedTag = [regex]::Replace($normalizedTag, "-{2,}", "-")
+            $normalizedTag = $normalizedTag.Trim('-')
+
+            if ([string]::IsNullOrWhiteSpace($normalizedTag) -or $normalizedTag -eq "v") {
+              Write-Error "release_tag could not be normalized into a valid Git tag"
+              exit 1
+            }
+
+            $tag = $normalizedTag
+            $targetCommitish = $env:GITHUB_SHA
+          }
+          else {
+            $tag = $env:GITHUB_REF_NAME
+            $name = $tag
+          }
+
+          $prerelease = $false
+          if ($tag -match "(?i)(alpha|beta|rc|preview|pre)" -or $name -match "(?i)(alpha|beta|rc|preview|pre)") {
+            $prerelease = $true
+          }
+
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "name=$name" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "target_commitish=$targetCommitish" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "prerelease=$($prerelease.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ steps.meta.outputs.tag }}
           name: ${{ steps.meta.outputs.name }}
+          target_commitish: ${{ steps.meta.outputs.target_commitish }}
           generate_release_notes: true
           draft: false
-          prerelease: false
+          prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
           files: |
             rizin-notebook-*/*
             rz-notebook-*/*
