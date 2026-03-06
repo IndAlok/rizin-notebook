@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"net/http"
 
@@ -60,8 +61,31 @@ func serverAddPage(root *gin.RouterGroup) {
 			return
 		}
 
+		var uploadName string
+		var uploadData []byte
+		file, header, err := c.Request.FormFile("binary")
+		if err == nil {
+			defer file.Close()
+			data, readErr := io.ReadAll(file)
+			if readErr != nil {
+				c.HTML(http.StatusInternalServerError, "error.tmpl", gin.H{
+					"root":  webroot,
+					"error": "Failed to read uploaded file",
+				})
+				return
+			}
+			uploadName = header.Filename
+			uploadData = data
+		} else if !errors.Is(err, http.ErrMissingFile) {
+			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
+				"root":  webroot,
+				"error": "Failed to read uploaded file",
+			})
+			return
+		}
+
 		if len(unique) > 0 {
-			// Editing an existing page: just rename.
+			// Editing an existing page: rename and optionally replace the binary.
 			if !IsValidNonce(unique, PageNonceSize) {
 				c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
 					"root":  webroot,
@@ -69,38 +93,37 @@ func serverAddPage(root *gin.RouterGroup) {
 				})
 				return
 			}
-			store.RenamePage(unique, title)
+			if err := store.RenamePage(unique, title); err != nil {
+				c.HTML(http.StatusInternalServerError, "error.tmpl", gin.H{
+					"root":  webroot,
+					"error": "Failed to update page",
+				})
+				return
+			}
+			if len(uploadData) > 0 {
+				if err := store.AttachBinary(unique, uploadName, uploadData); err != nil {
+					c.HTML(http.StatusInternalServerError, "error.tmpl", gin.H{
+						"root":  webroot,
+						"error": "Failed to save binary file",
+					})
+					return
+				}
+			}
 			c.Redirect(http.StatusFound, webroot+"view/"+unique)
 			return
 		}
 
-		// Creating a new page: handle file upload.
-		file, header, err := c.Request.FormFile("binary")
-		if err != nil {
-			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
-				"root":  webroot,
-				"error": "A binary file is required for a new page",
-			})
-			return
-		}
-		defer file.Close()
-
-		// Read the uploaded binary into memory.
-		data, err := io.ReadAll(file)
-		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.tmpl", gin.H{
-				"root":  webroot,
-				"error": "Failed to read uploaded file",
-			})
-			return
-		}
-
-		// Generate nonces for page and binary.
+		// Creating a new page: uploaded binary is optional.
 		pageID := Nonce(PageNonceSize)
-		binaryKey := Nonce(ElementNonceSize)
+		binaryKey := ""
+		filename := ""
+		if len(uploadData) > 0 {
+			binaryKey = Nonce(ElementNonceSize)
+			filename = uploadName
+		}
 
 		// Create the page in SQLite.
-		if storeErr := store.CreatePage(pageID, title, header.Filename, binaryKey); storeErr != nil {
+		if storeErr := store.CreatePage(pageID, title, filename, binaryKey); storeErr != nil {
 			c.HTML(http.StatusInternalServerError, "error.tmpl", gin.H{
 				"root":  webroot,
 				"error": "Failed to create page",
@@ -108,14 +131,16 @@ func serverAddPage(root *gin.RouterGroup) {
 			return
 		}
 
-		// Save the binary to SQLite.
-		if storeErr := store.SaveBinary(pageID, binaryKey, data); storeErr != nil {
-			store.DeletePage(pageID)
-			c.HTML(http.StatusInternalServerError, "error.tmpl", gin.H{
-				"root":  webroot,
-				"error": "Failed to save binary file",
-			})
-			return
+		// Save the binary to SQLite if provided.
+		if binaryKey != "" {
+			if storeErr := store.SaveBinary(pageID, binaryKey, uploadData); storeErr != nil {
+				store.DeletePage(pageID)
+				c.HTML(http.StatusInternalServerError, "error.tmpl", gin.H{
+					"root":  webroot,
+					"error": "Failed to save binary file",
+				})
+				return
+			}
 		}
 
 		c.Redirect(http.StatusFound, webroot+"view/"+pageID)
@@ -161,6 +186,7 @@ func serverAddPage(root *gin.RouterGroup) {
 			"unique":   page.ID,
 			"filename": page.Filename,
 			"binary":   page.Binary,
+			"hasBinary": page.Binary != "",
 			"lines":    lines,
 		}
 

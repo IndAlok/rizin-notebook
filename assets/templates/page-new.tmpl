@@ -21,12 +21,8 @@
       }
       function verify(event) {
         var title = document.getElementById('title').value.trim().length;
-        var files = document.getElementById('binary').files.length;
         if (title < 1) {
           alert("Title field is empty. Please add one.");
-          event.preventDefault();
-        } else if (files < 1) {
-          alert("You forgot to select a file to analyze. Please select one.");
           event.preventDefault();
         }
       }
@@ -50,10 +46,13 @@
             <div class="form-group">
               <input type="hidden" name="unique" value="{{ .unique }}" />
               <input type="text" class="form-input" name="title" id="title" value="{{ .title }}" placeholder="Notebook page title"/>
-              {{ if lt $nlen 1 }}
               <br>
-              <label for="binary">Choose a binary to open: </label>
+              <label for="binary">{{ if lt $nlen 1 }}Optional binary to open{{ else }}Attach or replace binary{{ end }}: </label>
               <input type="file" id="binary" name="binary">
+              {{ if gt $nlen 0 }}
+              <p class="form-input-hint">Current binary: {{ if $page.filename }}{{ $page.filename }}{{ else }}none attached{{ end }}</p>
+              {{ else }}
+              <p class="form-input-hint">You can create notes without a binary now and attach one later from the edit page.</p>
               {{ end }}
             </div>
             <div class="form-group">

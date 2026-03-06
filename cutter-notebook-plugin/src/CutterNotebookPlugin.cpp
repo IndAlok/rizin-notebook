@@ -7,6 +7,9 @@
 #include <QComboBox>
 #include <QDockWidget>
 #include <QDesktopServices>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QJsonArray>
@@ -348,6 +351,62 @@ bool CutterNotebookPlugin::loadPage(const QString &pageId, bool focusView)
     return true;
 }
 
+bool CutterNotebookPlugin::attachBinaryToPage(const QString &pageId, const QString &filePath)
+{
+    if (pageId.isEmpty()) {
+        QMessageBox::information(nullptr, QStringLiteral("Notebook"), QStringLiteral("Select a page first."));
+        return false;
+    }
+
+    QString chosenPath = filePath;
+    if (chosenPath.isEmpty()) {
+        chosenPath = QFileDialog::getOpenFileName(nullptr,
+                                                  QStringLiteral("Select Binary File"),
+                                                  QString(),
+                                                  QStringLiteral("All Files (*)"));
+    }
+    if (chosenPath.isEmpty()) {
+        return false;
+    }
+
+    QFile file(chosenPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        QMessageBox::warning(nullptr,
+                             QStringLiteral("Notebook"),
+                             QStringLiteral("Failed to read binary file: %1").arg(chosenPath));
+        return false;
+    }
+
+    QJsonObject req;
+    req.insert(QStringLiteral("filename"), QFileInfo(chosenPath).fileName());
+    req.insert(QStringLiteral("binary_base64"), QString::fromLatin1(file.readAll().toBase64()));
+
+    int statusCode = 0;
+    QString error;
+    const QByteArray data = sendJsonRequest(QStringLiteral("POST"),
+                                            QStringLiteral("/api/v1/json/pages/%1/binary").arg(pageId),
+                                            QJsonDocument(req).toJson(QJsonDocument::Compact),
+                                            &statusCode,
+                                            &error);
+    if (data.isEmpty()) {
+        QMessageBox::warning(nullptr,
+                             QStringLiteral("Notebook"),
+                             error.isEmpty() ? QStringLiteral("Failed to attach binary.") : error);
+        return false;
+    }
+
+    const QJsonObject obj = QJsonDocument::fromJson(data).object();
+    if (statusCode >= 400) {
+        QMessageBox::warning(nullptr,
+                             QStringLiteral("Notebook"),
+                             obj.value(QStringLiteral("error")).toString(QStringLiteral("Failed to attach binary.")));
+        return false;
+    }
+
+    loadPage(pageId, true);
+    return true;
+}
+
 bool CutterNotebookPlugin::populatePages(bool keepSelection)
 {
     if (!pageListWidget) {
@@ -523,6 +582,7 @@ void CutterNotebookPlugin::setupInterface(MainWindow *main)
     ensureAction("List Pages", "NotebookListPagesAction", &CutterNotebookPlugin::onListPages);
     ensureAction("New Page...", "NotebookNewPageAction", &CutterNotebookPlugin::onNewPage);
     ensureAction("Delete Page", "NotebookDeletePageAction", &CutterNotebookPlugin::onDeletePage);
+    ensureAction("Attach Binary...", "NotebookAttachBinaryAction", &CutterNotebookPlugin::onAttachBinary);
 
     bool hasSeparator = false;
     for (QAction *action : nbMenu->actions()) {
@@ -575,12 +635,14 @@ void CutterNotebookPlugin::setupInterface(MainWindow *main)
     auto *btnPages = new QPushButton("Refresh Pages", pagesTab);
     auto *btnNew = new QPushButton("New Page", pagesTab);
     auto *btnDelete = new QPushButton("Delete Page", pagesTab);
+    auto *btnAttachBinary = new QPushButton("Attach Binary", pagesTab);
     auto *btnOpenPipe = new QPushButton("Open Pipe", pagesTab);
     auto *btnClosePipe = new QPushButton("Close Pipe", pagesTab);
     auto *btnReloadPage = new QPushButton("Reload Page", pagesTab);
     pagesButtons->addWidget(btnPages);
     pagesButtons->addWidget(btnNew);
     pagesButtons->addWidget(btnDelete);
+    pagesButtons->addWidget(btnAttachBinary);
     pagesButtons->addWidget(btnOpenPipe);
     pagesButtons->addWidget(btnClosePipe);
     pagesButtons->addWidget(btnReloadPage);
@@ -631,6 +693,7 @@ void CutterNotebookPlugin::setupInterface(MainWindow *main)
     connect(btnPages, &QPushButton::clicked, this, &CutterNotebookPlugin::onListPages);
     connect(btnNew, &QPushButton::clicked, this, &CutterNotebookPlugin::onNewPage);
     connect(btnDelete, &QPushButton::clicked, this, &CutterNotebookPlugin::onDeletePage);
+    connect(btnAttachBinary, &QPushButton::clicked, this, &CutterNotebookPlugin::onAttachBinary);
     connect(btnOpenPipe, &QPushButton::clicked, this, &CutterNotebookPlugin::onOpenPipe);
     connect(btnClosePipe, &QPushButton::clicked, this, &CutterNotebookPlugin::onClosePipe);
     connect(btnReloadPage, &QPushButton::clicked, this, &CutterNotebookPlugin::onReloadSelectedPage);
@@ -745,6 +808,21 @@ void CutterNotebookPlugin::onNewPage()
 
     QJsonObject req;
     req.insert(QStringLiteral("title"), title);
+    const QString binaryPath = QFileDialog::getOpenFileName(nullptr,
+                                                            QStringLiteral("Optional Binary File"),
+                                                            QString(),
+                                                            QStringLiteral("All Files (*)"));
+    if (!binaryPath.isEmpty()) {
+        QFile file(binaryPath);
+        if (!file.open(QIODevice::ReadOnly)) {
+            QMessageBox::warning(nullptr,
+                                 QStringLiteral("Notebook"),
+                                 QStringLiteral("Failed to read binary file: %1").arg(binaryPath));
+            return;
+        }
+        req.insert(QStringLiteral("filename"), QFileInfo(binaryPath).fileName());
+        req.insert(QStringLiteral("binary_base64"), QString::fromLatin1(file.readAll().toBase64()));
+    }
     int statusCode = 0;
     QString error;
     const QByteArray data = sendJsonRequest(QStringLiteral("POST"),
@@ -771,6 +849,13 @@ void CutterNotebookPlugin::onNewPage()
         loadPage(newPageId, true);
     }
     refreshDockStatus();
+}
+
+void CutterNotebookPlugin::onAttachBinary()
+{
+    ensureDockVisible();
+    const QString pageId = selectedPageId().isEmpty() ? currentPageId : selectedPageId();
+    attachBinaryToPage(pageId);
 }
 
 void CutterNotebookPlugin::onDeletePage()
@@ -830,9 +915,20 @@ void CutterNotebookPlugin::onOpenPipe()
     }
     const QJsonObject obj = QJsonDocument::fromJson(data).object();
     if (!obj.value(QStringLiteral("open")).toBool()) {
+        const QString serverError = obj.value(QStringLiteral("error")).toString();
+        if (serverError.contains(QStringLiteral("no binary attached"), Qt::CaseInsensitive)) {
+            if (QMessageBox::question(nullptr,
+                                      QStringLiteral("Notebook"),
+                                      QStringLiteral("This page has no binary attached yet. Select one now?")) == QMessageBox::Yes) {
+                if (attachBinaryToPage(pageId)) {
+                    onOpenPipe();
+                }
+            }
+            return;
+        }
         QMessageBox::warning(nullptr,
                              QStringLiteral("Notebook"),
-                             obj.value(QStringLiteral("error")).toString(QStringLiteral("Failed to open pipe.")));
+                             serverError.isEmpty() ? QStringLiteral("Failed to open pipe.") : serverError);
         return;
     }
     loadPage(pageId, true);

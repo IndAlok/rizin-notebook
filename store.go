@@ -174,6 +174,52 @@ func (s *Store) RenamePage(id, title string) error {
 	return nil
 }
 
+// AttachBinary stores or replaces the binary associated with a page.
+func (s *Store) AttachBinary(pageID, filename string, data []byte) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if len(filename) < 1 {
+		return fmt.Errorf("filename is required")
+	}
+	if len(data) == 0 {
+		return fmt.Errorf("binary data is required")
+	}
+
+	var oldBinary string
+	err := s.db.QueryRow("SELECT binary FROM pages WHERE id = ?", pageID).Scan(&oldBinary)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("page not found: %s", pageID)
+	}
+	if err != nil {
+		return err
+	}
+
+	binaryKey := Nonce(ElementNonceSize)
+	if _, err := s.db.Exec(
+		"INSERT OR REPLACE INTO binaries (page_id, name, data) VALUES (?, ?, ?)",
+		pageID, binaryKey, data,
+	); err != nil {
+		return err
+	}
+
+	now := time.Now().Unix()
+	if _, err := s.db.Exec(
+		"UPDATE pages SET filename = ?, binary = ?, modified = ? WHERE id = ?",
+		filename, binaryKey, now, pageID,
+	); err != nil {
+		return err
+	}
+
+	if oldBinary != "" {
+		if _, err := s.db.Exec("DELETE FROM binaries WHERE page_id = ? AND name = ?", pageID, oldBinary); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // DeletePage removes a page and all its cells/binaries (via CASCADE).
 func (s *Store) DeletePage(id string) error {
 	s.mutex.Lock()

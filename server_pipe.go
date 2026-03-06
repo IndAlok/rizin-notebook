@@ -28,6 +28,15 @@ func serverAddPipe(pipe *gin.RouterGroup) {
 			return
 		}
 
+		if page.Binary == "" {
+			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
+				"root":     webroot,
+				"error":    "This page has no binary attached yet. Attach one from the edit page before opening a Rizin pipe.",
+				"location": webroot + "edit/" + unique,
+			})
+			return
+		}
+
 		if notebook.open(unique, true) == nil {
 			c.HTML(http.StatusInternalServerError, "error.tmpl", gin.H{
 				"root":     webroot,

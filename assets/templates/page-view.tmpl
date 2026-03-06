@@ -296,6 +296,10 @@
       <section class="navbar-section">
         <h4 class="title-margin">{{ $page.title }}</h4>
         &nbsp;
+        {{ if not $page.hasBinary }}
+        <a href="{{ $root }}edit/{{ $page.unique }}" class="btn btn-error">Attach Binary</a>
+        &nbsp;
+        {{ end }}
         <a href="{{ $root }}pipe/{{ if $pipe }}close{{ else }}open{{ end }}/{{ $page.unique }}" class="btn{{ if $pipe }} pipe{{ end }}">
           {{ if $pipe }}Close Pipe{{ else }}Open Pipe{{ end }}
         </a>
@@ -307,7 +311,7 @@
       <div class="columns">
         <div class="column">
           <div class="input-group spacing-top">
-            <code class="input-group-addon spacing-right">File: {{ $page.filename }}</code>
+            <code class="input-group-addon spacing-right">File: {{ if $page.filename }}{{ $page.filename }}{{ else }}none attached{{ end }}</code>
           </div>
         </div>
       </div>

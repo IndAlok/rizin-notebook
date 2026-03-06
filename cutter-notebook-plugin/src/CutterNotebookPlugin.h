@@ -41,6 +41,7 @@ private:
                                QString *errorOut = nullptr);
     bool populatePages(bool keepSelection = true);
     bool loadPage(const QString &pageId, bool focusView = false);
+    bool attachBinaryToPage(const QString &pageId, const QString &filePath = QString());
     void renderPage(const QVariantMap &page);
     QString selectedPageId() const;
     void updateComposeLabels(const QVariantMap &page = QVariantMap());
@@ -52,6 +53,7 @@ private:
     void onListPages();
     void onNewPage();
     void onDeletePage();
+    void onAttachBinary();
     void onOpenPipe();
     void onClosePipe();
     void onSubmitEditor();

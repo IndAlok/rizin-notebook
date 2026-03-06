@@ -129,6 +129,7 @@ func serverAddAPI(root *gin.RouterGroup) {
 	jsonAPI.GET("/pages/:id", apiJSONGetPage)
 	jsonAPI.POST("/pages", apiJSONCreatePage)
 	jsonAPI.DELETE("/pages/:id", apiJSONDeletePage)
+	jsonAPI.POST("/pages/:id/binary", apiJSONAttachBinary)
 	jsonAPI.POST("/pages/:id/cells", apiJSONAddCell)
 	jsonAPI.POST("/pages/:id/exec", apiJSONExecCommand)
 	jsonAPI.POST("/pages/:id/script", apiJSONExecScript)
@@ -356,6 +357,57 @@ func apiJSONDeletePage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+func apiJSONAttachBinary(c *gin.Context) {
+	pageID := c.Param("id")
+	if !IsValidNonce(pageID, PageNonceSize) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page identifier"})
+		return
+	}
+
+	var req struct {
+		Filename     string `json:"filename"`
+		BinaryBase64 string `json:"binary_base64"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
+		return
+	}
+	if req.Filename == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "filename is required"})
+		return
+	}
+	if req.BinaryBase64 == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "binary_base64 is required"})
+		return
+	}
+
+	binary, err := base64.StdEncoding.DecodeString(req.BinaryBase64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid binary_base64: " + err.Error()})
+		return
+	}
+	if len(binary) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "binary data is required"})
+		return
+	}
+
+	if err := store.AttachBinary(pageID, req.Filename, binary); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save binary: " + err.Error()})
+		return
+	}
+
+	page, err := store.GetPage(pageID)
+	if err != nil || page == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load updated page"})
+		return
+	}
+
+	notebook.mutex.Lock()
+	pipeOpen := notebook.pipes[pageID] != nil
+	notebook.mutex.Unlock()
+	c.JSON(http.StatusOK, gin.H{"page": pageRowToJSON(page, pipeOpen)})
+}
+
 func apiJSONAddCell(c *gin.Context) {
 	pageID := c.Param("id")
 	if !IsValidNonce(pageID, PageNonceSize) {
@@ -467,6 +519,15 @@ func apiJSONPipeOpen(c *gin.Context) {
 	pageID := c.Param("id")
 	if !IsValidNonce(pageID, PageNonceSize) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page identifier"})
+		return
+	}
+	page, err := store.GetPage(pageID)
+	if err != nil || page == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "page not found"})
+		return
+	}
+	if page.Binary == "" {
+		c.JSON(http.StatusOK, gin.H{"open": false, "error": "page has no binary attached; attach a binary first"})
 		return
 	}
 	rz := notebook.open(pageID, true)
@@ -879,6 +940,13 @@ func apiPipeOpen(c *gin.Context) {
 	page, err := store.GetPage(pageID)
 	if err != nil || page == nil {
 		respondError(c, http.StatusNotFound, "page not found")
+		return
+	}
+	if page.Binary == "" {
+		respondProto(c, http.StatusOK, &pb.PipeResponse{
+			Open:  false,
+			Error: "page has no binary attached; attach a binary first",
+		})
 		return
 	}
 
