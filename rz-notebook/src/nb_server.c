@@ -26,8 +26,8 @@
 
 bool nb_server_is_alive(void) {
 	NbHttpResponse resp;
-	bool ok = nb_http_get("/api/v1/status", &resp);
-	bool alive = ok && resp.ok && resp.status == 200;
+	bool ok = nb_http_get("/api/v1/ping", &resp);
+	bool alive = ok && resp.ok && (resp.status == 200 || resp.status == 204);
 	nb_http_response_free(&resp);
 	return alive;
 }
@@ -221,17 +221,33 @@ bool nb_server_ensure(const char *exe_path) {
 		found = NULL; // Use the provided path directly.
 	} else {
 		found = nb_server_find_executable();
-		if (!found) return false;
+		if (!found) {
+			fprintf(stderr, "[notebook] cannot find rizin-notebook executable "
+			        "(searched next to plugin DLL, PATH, common locations)\n");
+			return false;
+		}
 		exe_path = found;
 	}
 
+	fprintf(stderr, "[notebook] starting server: %s\n", exe_path);
+
 	// Start it.
 	bool ok = start_server_process(exe_path);
+	if (!ok) {
+		fprintf(stderr, "[notebook] CreateProcess/fork failed for: %s\n", exe_path);
+		free(found);
+		return false;
+	}
 	free(found);
-	if (!ok) return false;
 
-	// Wait up to 5 seconds for it to start.
-	return nb_server_wait_alive(5000);
+	// Wait up to 10 seconds for it to become reachable.
+	if (!nb_server_wait_alive(10000)) {
+		fprintf(stderr, "[notebook] server process started but did not become "
+		        "reachable within 10 seconds (port 8000 conflict?)\n");
+		return false;
+	}
+
+	return true;
 }
 
 void nb_server_stop(void) {

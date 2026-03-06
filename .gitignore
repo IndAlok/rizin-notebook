@@ -43,3 +43,5 @@ rz-notebook/build/
 rz-notebook/cmake-build-*/
 .DS_Store
 Thumbs.db
+embedded-rizin-check.txt
+embedded-rizin-plugins.txt

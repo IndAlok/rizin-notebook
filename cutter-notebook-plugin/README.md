@@ -17,10 +17,12 @@ This plugin stores nothing — all data lives in the Go server's SQLite database
 ## Requirements
 
 - Cutter 2.4.1 (or compatible)
-- rz-notebook core plugin installed (provides the `NB` commands)
+- rz-notebook core plugin installed for the same Rizin version that Cutter ships (provides the `NB` commands)
 - rizin-notebook Go server running (the core plugin can auto-start it)
 - Qt6 SDK matching your Cutter version (for building)
 - CMake 3.16+ and a C++20 compiler (MSVC 2022 on Windows)
+
+If your standalone rizin uses a different Rizin version than Cutter, that is fine. Just build `rz_notebook` once for standalone rizin, and again for Cutter's bundled Rizin. Both can use the same notebook server.
 
 ## Build (Windows)
 
@@ -65,6 +67,10 @@ Or copy the built file manually:
 
 The file you copy must be `CutterNotebookPlugin.dll` on Windows.
 
+This native Cutter plugin is only the UI part. Cutter also needs the `rz_notebook` core plugin in the Rizin plugin directory that Cutter actually uses.
+
+For packaged Cutter builds, that often means the bundled Rizin plugin directory inside the Cutter install, not only your normal user rizin plugin directory.
+
 GitHub release artifacts include a prebuilt Windows plugin binary (`CutterNotebookPlugin.dll`).
 
 ## Troubleshooting
@@ -73,6 +79,8 @@ GitHub release artifacts include a prebuilt Windows plugin binary (`CutterNotebo
 
 **Wrong DLL in Cutter folder** — Cutter needs `CutterNotebookPlugin.dll`. The file `rz_notebook.dll` is a rizin core plugin and belongs in `%APPDATA%\rizin\plugins`, not Cutter's native plugin directory.
 
-**NB commands not found** — the rz-notebook core plugin (`rz_notebook.dll` / `.so`) needs to be in rizin's plugin path. Run `rizin -H RZ_USER_PLUGINS` to check.
+**NB commands not found** — the `rz_notebook` core plugin (`rz_notebook.dll` / `.so`) needs to be built for the same Rizin version as Cutter and placed in the Rizin plugin path that Cutter uses. On portable Cutter builds, that may be inside the Cutter installation.
+
+**Server reachable, but NB commands still missing** — this usually means the Go server is fine, but Cutter's Rizin did not load a compatible `rz_notebook` plugin. Rebuild `rz_notebook` against Cutter's bundled Rizin and copy that build into Cutter's Rizin plugin directory.
 
 **Server unreachable** — start the Go server (`rizin-notebook`) first. Use Set Server URL if it's not on the default `http://127.0.0.1:8000`.

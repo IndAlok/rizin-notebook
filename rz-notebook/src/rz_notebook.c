@@ -766,7 +766,13 @@ static bool rz_notebook_init(RzCore *core) {
 
 	// Proactively try to ensure the server is reachable on plugin load.
 	// If this fails, individual commands will retry and show concrete errors.
-	if (!ensure_server()) {
+	// Skip auto-start when loaded inside a sub-process spawned by the Go
+	// server itself (RIZIN_NOTEBOOK_NO_AUTOSTART=1), to avoid recursive
+	// process spawning and unnecessary error spam.
+	const char *no_auto = getenv("RIZIN_NOTEBOOK_NO_AUTOSTART");
+	if (no_auto && *no_auto == '1') {
+		NB_LOG_INFO("auto-start skipped (RIZIN_NOTEBOOK_NO_AUTOSTART=1)");
+	} else if (!ensure_server()) {
 		NB_LOG_INFO("server was not reachable during init; commands will retry startup");
 	}
 

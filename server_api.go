@@ -90,6 +90,9 @@ func pageRowToProto(p *PageRow, pipeOpen bool) *pb.Page {
 func serverAddAPI(root *gin.RouterGroup) {
 	api := root.Group("/api/v1")
 
+	// ─── Health Check ───────────────────────────────────
+	api.GET("/ping", apiPing)
+
 	// ─── Status ─────────────────────────────────────────
 	api.GET("/status", apiStatus)
 
@@ -118,6 +121,16 @@ func serverAddAPI(root *gin.RouterGroup) {
 	api.GET("/settings", apiGetSettings)
 	api.PUT("/settings", apiSetSetting)
 	api.DELETE("/settings/:key", apiDeleteSetting)
+}
+
+// ─── Health Check ───────────────────────────────────────────
+
+// apiPing is a lightweight health-check endpoint that returns 200 OK
+// with no body processing.  Used by the rz_notebook plugin to verify
+// the server is alive without triggering heavy work like rizin version
+// detection.
+func apiPing(c *gin.Context) {
+	c.String(http.StatusOK, "pong")
 }
 
 // ─── Status ─────────────────────────────────────────────────

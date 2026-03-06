@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -62,7 +63,10 @@ func RizinInfo(rizinbin string) ([]string, error) {
 
 	for _, args := range flags {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		out, err := exec.CommandContext(ctx, rizinbin, args...).CombinedOutput()
+		cmd := exec.CommandContext(ctx, rizinbin, args...)
+		cmd.Env = rizinEnv()
+		configureSubprocess(cmd)
+		out, err := cmd.CombinedOutput()
 		cancel()
 		if err != nil {
 			lastErr = err
@@ -92,8 +96,30 @@ func RizinInfo(rizinbin string) ([]string, error) {
 	return nil, lastErr
 }
 
+// rizinEnv returns the current environment with RIZIN_NOTEBOOK_NO_AUTOSTART=1
+// so the rz_notebook plugin in sub-processes won't try to auto-start a server.
+func rizinEnv() []string {
+	env := os.Environ()
+	// Ensure the variable is present (even if main.go already set it).
+	found := false
+	for i, e := range env {
+		if strings.HasPrefix(e, "RIZIN_NOTEBOOK_NO_AUTOSTART=") {
+			env[i] = "RIZIN_NOTEBOOK_NO_AUTOSTART=1"
+			found = true
+			break
+		}
+	}
+	if !found {
+		env = append(env, "RIZIN_NOTEBOOK_NO_AUTOSTART=1")
+	}
+	return env
+}
+
 func RizinCommands(rizinbin string) (map[string]RizinCommand, error) {
-	out, err := exec.Command(rizinbin, "-qc", "?*j").Output()
+	cmd := exec.Command(rizinbin, "-qc", "?*j")
+	cmd.Env = rizinEnv()
+	configureSubprocess(cmd)
+	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
 	}
@@ -113,6 +139,8 @@ func NewRizin(rizinbin, file, project string) *Rizin {
 		file,
 	}
 	pipe := exec.Command(rizinbin, args...)
+	pipe.Env = rizinEnv()
+	configureSubprocess(pipe)
 
 	stdin, err := pipe.StdinPipe()
 	if err != nil {

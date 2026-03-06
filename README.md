@@ -16,6 +16,28 @@ The project has three parts:
 
 The plugins are optional. The Go server works standalone with just a browser.
 
+## Compatibility note
+
+The Go server is shared across platforms and does not care whether you use rizin or Cutter.
+
+The plugins do care about the Rizin version they are built against.
+
+If standalone rizin and Cutter ship different Rizin versions on your machine, build `rz_notebook` separately for each one. They can still talk to the same notebook server and the same notebook data.
+
+## Quick setup
+
+If you only use standalone rizin, you need the server and one `rz_notebook` build that matches your rizin version.
+
+If you also use Cutter, you may need a second `rz_notebook` build for Cutter if Cutter ships a different Rizin version.
+
+The simple rule is:
+
+- one server
+- one `rz_notebook` build per Rizin version
+- one Cutter UI plugin if you want the Cutter menu
+
+That way standalone rizin and Cutter stay in sync and still use the same notebook data.
+
 ## Building the server
 
 ```bash
@@ -102,12 +124,15 @@ Or copy `rz_notebook.dll` / `rz_notebook.so` to the rizin plugin directory:
 
 - Windows: `%APPDATA%\rizin\plugins`
 - Linux: `~/.local/lib/rizin/plugins`
+- macOS: `~/Library/Application Support/rizin/plugins`
 
 Run `rizin -H RZ_USER_PLUGINS` to confirm the path.
 
 ## Building the Cutter plugin
 
 See [cutter-notebook-plugin/README.md](cutter-notebook-plugin/README.md).
+
+If Cutter ships its own embedded Rizin, make sure the `rz_notebook` core plugin that Cutter uses is built against that bundled Rizin version, not against some other rizin installation on your system.
 
 ## Releases
 

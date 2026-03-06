@@ -4,6 +4,10 @@ Rizin core plugin that adds `NB` commands for interacting with the [rizin-notebo
 
 When loaded, it registers a command group under `NB` and can auto-start the notebook server if it's not already running.
 
+This plugin must be built against the same Rizin version as the host that loads it.
+
+That means a standalone rizin install and a Cutter bundle may need different `rz_notebook` builds if they ship different Rizin versions. Both builds can still use the same notebook server.
+
 ## Commands
 
 ```
@@ -88,5 +92,8 @@ Or copy `rz_notebook.dll` / `rz_notebook.so` to:
 
 - Windows: `%APPDATA%\rizin\plugins`
 - Linux: `~/.local/lib/rizin/plugins`
+- macOS: `~/Library/Application Support/rizin/plugins`
+
+If Cutter uses its own bundled Rizin, copy the Cutter-compatible build into the Rizin plugin directory inside the Cutter installation, or wherever that Cutter build loads Rizin plugins from.
 
 Check with `rizin -H RZ_USER_PLUGINS`.

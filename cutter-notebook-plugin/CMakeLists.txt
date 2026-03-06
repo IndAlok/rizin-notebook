@@ -46,7 +46,7 @@ set(CUTTER_INCLUDE_DIR "${CUTTER_ROOT}/include")
 # ── Find Qt6 from the system / CMAKE_PREFIX_PATH ───────────────────────────
 # We need Qt6 headers, MOC, and import libraries from a proper SDK install.
 # The Cutter binary release only ships runtime DLLs, not development files.
-find_package(Qt6 6.6 REQUIRED COMPONENTS Core Widgets Gui)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Core Widgets Gui Network)
 
 # ── Manually create Cutter::Cutter imported target ──────────────────────────
 # We bypass CutterConfig.cmake because it calls find_dependency(Qt6 …) for
@@ -72,7 +72,7 @@ set_target_properties(Cutter::Cutter PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES
         "${CUTTER_INCLUDE_DIR}/cutter;${CUTTER_INCLUDE_DIR}/cutter/core;${CUTTER_INCLUDE_DIR}/cutter/widgets;${CUTTER_INCLUDE_DIR}/cutter/common;${CUTTER_INCLUDE_DIR}/cutter/plugins;${CUTTER_INCLUDE_DIR}/cutter/menus;${CUTTER_INCLUDE_DIR}/cutter/dialogs;${CUTTER_INCLUDE_DIR}/cutter/tools"
     INTERFACE_LINK_LIBRARIES
-        "Qt6::Core;Qt6::Widgets;Qt6::Gui"
+        "Qt6::Core;Qt6::Widgets;Qt6::Gui;Qt6::Network"
 )
 
 # ── Rizin (include paths for rz_core.h etc.) ───────────────────────────────
@@ -104,6 +104,7 @@ target_link_libraries(CutterNotebookPlugin PRIVATE
     Cutter::Cutter
     Cutter::Rizin
     Qt6::Core
+    Qt6::Network
     Qt6::Widgets
 )
 

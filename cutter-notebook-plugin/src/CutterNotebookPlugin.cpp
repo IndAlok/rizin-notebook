@@ -15,17 +15,83 @@
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QEventLoop>
+#include <QTimer>
+#include <QProcess>
+#include <QThread>
+
+// Helper: perform a synchronous HTTP GET to `url` and expect body "pong".
+static bool pingServer(const QString &url, int timeoutMs = 1200)
+{
+    QNetworkAccessManager mgr;
+    QNetworkRequest req{QUrl(url)};
+    QNetworkReply *reply = mgr.get(req);
+
+    QEventLoop loop;
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, [&]() {
+        reply->abort();
+        loop.quit();
+    });
+    timer.start(timeoutMs);
+    loop.exec();
+
+    if (reply->error() != QNetworkReply::NoError) {
+        reply->deleteLater();
+        return false;
+    }
+    const QByteArray body = reply->readAll().trimmed();
+    reply->deleteLater();
+    return body == "pong";
+}
+
+// Try starting the bundled server by invoking `rizin-notebook.exe` (relies on it
+// being on PATH or in working directory). Waits up to `waitMs` for ping to succeed.
+static bool tryStartServer(bool showDialog, int waitMs = 6000)
+{
+    bool started = QProcess::startDetached("rizin-notebook.exe");
+    if (!started) {
+        if (showDialog) {
+            QMessageBox::warning(nullptr, "Notebook", "Failed to start rizin-notebook.exe. Make sure it is installed and on PATH.");
+        }
+        return false;
+    }
+
+    const QString pingUrl = QStringLiteral("http://127.0.0.1:8000/api/v1/ping");
+    const int step = 300;
+    int waited = 0;
+    while (waited < waitMs) {
+        QThread::msleep(step);
+        if (pingServer(pingUrl, 600)) {
+            return true;
+        }
+        waited += step;
+    }
+    if (showDialog) {
+        QMessageBox::warning(nullptr, "Notebook", "Server did not respond after starting rizin-notebook.exe.");
+    }
+    return false;
+}
 
 /* ── Internal helpers ─────────────────────────────────────────────────── */
 
 QString CutterNotebookPlugin::runCmd(const QString &cmd, bool *ok)
 {
     QString out = Core()->cmdRaw(cmd).trimmed();
-    bool success = !out.contains("unknown command", Qt::CaseInsensitive)
-                && !out.contains("invalid command", Qt::CaseInsensitive)
-                && !out.contains("not found", Qt::CaseInsensitive);
+
+    // The command is "not available" if rizin says so, or if output is empty
+    // for an expected-output command.  We must NOT match partial words —
+    // e.g. "could not be started" should NOT trigger a false "not found".
+    bool cmdMissing = out.contains("unknown command", Qt::CaseInsensitive)
+                   || out.contains("invalid command", Qt::CaseInsensitive)
+                   || out.startsWith("Command not found", Qt::CaseInsensitive);
     if (ok) {
-        *ok = success;
+        *ok = !cmdMissing;
     }
     return out;
 }
@@ -37,17 +103,37 @@ bool CutterNotebookPlugin::ensureNotebookReady(QString *statusOut, bool showDial
     if (statusOut) {
         *statusOut = out;
     }
-    if (!ok || !out.contains("Notebook Server Status")) {
+
+    if (!ok) {
+        // NB commands are not available at all — rz_notebook plugin not loaded.
         if (showDialog) {
             QMessageBox::warning(
                 nullptr,
                 "Notebook",
-                "Notebook backend is not ready.\n"
-                "Make sure `rz_notebook` is installed in Cutter's rizin plugin path and built against a compatible rizin/Cutter version.\n\n"
+                "The NB commands are not available.  The rz_notebook plugin is "
+                "probably not installed in Cutter's rizin plugin directory.\n\n"
+                "Please copy rz_notebook.dll (and protobuf-c.dll) into one of:\n"
+                "  • %APPDATA%\\rizin\\plugins\\\n"
+                "  • <Cutter-install>\\lib\\plugins\\\n\n"
                 "Command output:\n" + out);
         }
         return false;
     }
+
+    if (!out.contains("Notebook Server Status")) {
+        // NB commands exist but server is not reachable.
+        if (showDialog) {
+            QMessageBox::warning(
+                nullptr,
+                "Notebook",
+                "The notebook server could not be reached.\n"
+                "Make sure rizin-notebook.exe is placed next to rz_notebook.dll "
+                "so the plugin can auto-start it, or start it manually.\n\n"
+                "Command output:\n" + out);
+        }
+        return false;
+    }
+
     return true;
 }
 
@@ -58,14 +144,26 @@ void CutterNotebookPlugin::refreshDockStatus()
     }
 
     QString out;
-    if (ensureNotebookReady(&out, false)) {
+    bool ok = false;
+    QString nbOut = runCmd("NBs", &ok);
+    if (ok && nbOut.contains("Notebook Server Status")) {
         QString url = runCmd("NBu").trimmed();
-        statusLabel->setText(QString("Notebook: Online (%1)").arg(url));
-        statusLabel->setToolTip(out.trimmed());
-    } else {
-        statusLabel->setText("Notebook: Offline / NB commands unavailable");
-        statusLabel->setToolTip(out.trimmed());
+        statusLabel->setText(QString("Notebook: Online (%1)").arg(url.isEmpty() ? "(no URL)" : url));
+        statusLabel->setToolTip(nbOut.trimmed());
+        return;
     }
+
+    // Fallback: try HTTP ping to detect a running server even if rz_notebook plugin
+    // isn't installed in this rizin instance.
+    const QString defaultUrl = QStringLiteral("http://127.0.0.1:8000/api/v1/ping");
+    if (pingServer(defaultUrl, 1200)) {
+        statusLabel->setText(QString("Notebook: Online (no rz_notebook plugin)"));
+        statusLabel->setToolTip("Server reachable but rz_notebook plugin not loaded in this rizin instance.");
+        return;
+    }
+
+    statusLabel->setText("Notebook: Offline / NB commands unavailable");
+    statusLabel->setToolTip(nbOut.trimmed());
 }
 
 /* ── Plugin lifecycle ──────────────────────────────────────────────────── */
@@ -74,27 +172,55 @@ void CutterNotebookPlugin::setupPlugin() {}
 
 void CutterNotebookPlugin::setupInterface(MainWindow *main)
 {
+    if (dockWidget) {
+        refreshDockStatus();
+        return;
+    }
+
     mainWindow = main;
 
     QMenu *pluginsMenu = main->getMenuByType(MainWindow::MenuType::Plugins);
-    QMenu *nbMenu = pluginsMenu->addMenu("Notebook");
+    // Reuse an existing "Notebook" menu if present to avoid duplicates.
+    QMenu *nbMenu = nullptr;
+    for (QAction *a : pluginsMenu->actions()) {
+        if (a && a->text() == QLatin1String("Notebook") && a->menu()) {
+            nbMenu = a->menu();
+            break;
+        }
+    }
+    if (!nbMenu) {
+        nbMenu = pluginsMenu->addMenu("Notebook");
+    }
 
-    auto *actStatus = nbMenu->addAction("Server Status");
-    connect(actStatus, &QAction::triggered, this, &CutterNotebookPlugin::onServerStatus);
+    auto ensureAction = [this, nbMenu](const QString &text, const char *name, auto slot) {
+        for (QAction *action : nbMenu->actions()) {
+            if (action && action->objectName() == QLatin1String(name)) {
+                return action;
+            }
+        }
+        QAction *action = nbMenu->addAction(text);
+        action->setObjectName(QLatin1String(name));
+        connect(action, &QAction::triggered, this, slot);
+        return action;
+    };
 
-    auto *actList = nbMenu->addAction("List Pages");
-    connect(actList, &QAction::triggered, this, &CutterNotebookPlugin::onListPages);
+    ensureAction("Server Status", "NotebookServerStatusAction", &CutterNotebookPlugin::onServerStatus);
+    ensureAction("List Pages", "NotebookListPagesAction", &CutterNotebookPlugin::onListPages);
+    ensureAction("New Page...", "NotebookNewPageAction", &CutterNotebookPlugin::onNewPage);
 
-    auto *actNew = nbMenu->addAction("New Page...");
-    connect(actNew, &QAction::triggered, this, &CutterNotebookPlugin::onNewPage);
+    bool hasSeparator = false;
+    for (QAction *action : nbMenu->actions()) {
+        if (action && action->isSeparator()) {
+            hasSeparator = true;
+            break;
+        }
+    }
+    if (!hasSeparator) {
+        nbMenu->addSeparator();
+    }
 
-    nbMenu->addSeparator();
-
-    auto *actOpen = nbMenu->addAction("Open in Browser");
-    connect(actOpen, &QAction::triggered, this, &CutterNotebookPlugin::onOpenBrowser);
-
-    auto *actUrl = nbMenu->addAction("Set Server URL...");
-    connect(actUrl, &QAction::triggered, this, &CutterNotebookPlugin::onSetUrl);
+    ensureAction("Open in Browser", "NotebookOpenBrowserAction", &CutterNotebookPlugin::onOpenBrowser);
+    ensureAction("Set Server URL...", "NotebookSetUrlAction", &CutterNotebookPlugin::onSetUrl);
 
     // Bottom dock for quick status and actions.
     dockWidget = new QDockWidget("Notebook", main);
@@ -148,8 +274,30 @@ void CutterNotebookPlugin::onServerStatus()
 {
     bool ok = false;
     QString result = runCmd("NBs", &ok);
-    QMessageBox::information(nullptr, "Notebook – Server Status", result.trimmed());
-    Q_UNUSED(ok);
+    if (ok && result.contains("Notebook Server Status")) {
+        QMessageBox::information(nullptr, "Notebook – Server Status", result.trimmed());
+        refreshDockStatus();
+        return;
+    }
+
+    // If NB commands not available, try HTTP ping to see if a server is running.
+    const QString pingUrl = QStringLiteral("http://127.0.0.1:8000/api/v1/ping");
+    if (pingServer(pingUrl, 1000)) {
+        QMessageBox::information(nullptr, "Notebook – Server Status",
+                                 "A notebook server is reachable at http://127.0.0.1:8000, but the rz_notebook plugin is not loaded in this rizin instance.");
+        refreshDockStatus();
+        return;
+    }
+
+    // Offer to start the server when the user asks for status.
+    auto choice = QMessageBox::question(nullptr, "Notebook",
+                                        "NB commands are not available and no server was detected.\nStart the local notebook server now?",
+                                        QMessageBox::Yes | QMessageBox::No);
+    if (choice == QMessageBox::Yes) {
+        if (tryStartServer(true)) {
+            QMessageBox::information(nullptr, "Notebook", "Server started successfully.");
+        }
+    }
     refreshDockStatus();
 }
 
@@ -186,23 +334,27 @@ void CutterNotebookPlugin::onNewPage()
 
 void CutterNotebookPlugin::onOpenBrowser()
 {
-    if (!ensureNotebookReady()) {
+    // Prefer configured URL via NB plugin if available.
+    bool ok = false;
+    QString url = runCmd("NBu", &ok).trimmed();
+    if (ok && !url.isEmpty()) {
+        QUrl qurl = QUrl::fromUserInput(url);
+        if (!qurl.isValid() || qurl.scheme().isEmpty()) {
+            QMessageBox::warning(nullptr, "Notebook", "Invalid server URL: " + url);
+            return;
+        }
+        QDesktopServices::openUrl(qurl);
         refreshDockStatus();
         return;
     }
 
-    QString url = runCmd("NBu").trimmed();
-    if (url.isEmpty()) {
-        QMessageBox::warning(nullptr, "Notebook", "No server URL configured.");
-        return;
+    // Fallback: open default server URL if reachable.
+    const QString defaultUrl = QStringLiteral("http://127.0.0.1:8000");
+    if (pingServer(defaultUrl + "/api/v1/ping", 800)) {
+        QDesktopServices::openUrl(QUrl(defaultUrl));
+    } else {
+        QMessageBox::warning(nullptr, "Notebook", "No server detected and rz_notebook plugin appears unavailable.");
     }
-
-    QUrl qurl = QUrl::fromUserInput(url);
-    if (!qurl.isValid() || qurl.scheme().isEmpty()) {
-        QMessageBox::warning(nullptr, "Notebook", "Invalid server URL: " + url);
-        return;
-    }
-    QDesktopServices::openUrl(qurl);
     refreshDockStatus();
 }
 

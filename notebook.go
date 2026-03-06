@@ -16,12 +16,6 @@ type Notebook struct {
 }
 
 func NewNotebook(storage, rizinbin string) *Notebook {
-	cmds, err := RizinCommands(rizinbin)
-	if err != nil {
-		fmt.Printf("warning: failed to load rizin commands: %v\n", err)
-		cmds = map[string]RizinCommand{}
-	}
-
 	jsvm := NewJavaScript()
 	if jsvm == nil {
 		panic("failed to create scripting engine")
@@ -32,8 +26,22 @@ func NewNotebook(storage, rizinbin string) *Notebook {
 		pipes:   map[string]*Rizin{},
 		jsvm:    jsvm,
 		rizin:   rizinbin,
-		cmds:    cmds,
+		cmds:    map[string]RizinCommand{},
 	}
+}
+
+// LoadCommands fetches the list of rizin commands by spawning rizin.
+// This MUST be called after the HTTP server is listening, because the
+// spawned rizin process loads rz_notebook which health-checks us.
+func (n *Notebook) LoadCommands() {
+	cmds, err := RizinCommands(n.rizin)
+	if err != nil {
+		fmt.Printf("warning: failed to load rizin commands: %v\n", err)
+		return
+	}
+	n.mutex.Lock()
+	n.cmds = cmds
+	n.mutex.Unlock()
 }
 
 func (n *Notebook) info() ([]string, error) {

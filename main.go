@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -85,11 +86,23 @@ func main() {
 		rizinbin = loc
 	}
 
+	// Prevent the rz_notebook plugin from auto-starting another server
+	// instance when we spawn rizin sub-processes (to load commands, etc.).
+	os.Setenv("RIZIN_NOTEBOOK_NO_AUTOSTART", "1")
+
 	fmt.Printf("Server data dir '%s'\n", dataDir)
+
+	// Create notebook WITHOUT loading commands yet; the HTTP server
+	// must be listening BEFORE we spawn any rizin sub-process, so that
+	// the rz_notebook plugin inside those sub-processes sees us as alive
+	// and does not try to start yet another server instance.
 	notebook = NewNotebook(dataDir, rizinbin)
 
-	// Start the HTTP server in a goroutine.
+	// Start the HTTP server FIRST (synchronous listen, async serve).
 	srv := startServer(assets, bind, debug)
+
+	// NOW load rizin commands; any rizin sub-process will find us alive.
+	notebook.LoadCommands()
 
 	// Block until SIGINT or SIGTERM is received.
 	quit := make(chan os.Signal, 1)
@@ -148,14 +161,22 @@ func resolveNotebookVersion() string {
 func startServer(assets, bind string, debug bool) *http.Server {
 	router := setupRouter(assets, bind, debug)
 	srv := &http.Server{
-		Addr:    bind,
 		Handler: router,
 	}
 
+	// Bind the socket synchronously so the server is reachable
+	// before we return.  This guarantees that any rizin sub-process
+	// spawned later will find the health-check endpoint alive.
+	ln, err := net.Listen("tcp", bind)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: listen error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Server listening at http://%s\n", bind)
+
 	go func() {
-		fmt.Printf("Server listening at http://%s\n", bind)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Fprintf(os.Stderr, "listen error: %v\n", err)
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			fmt.Fprintf(os.Stderr, "serve error: %v\n", err)
 			os.Exit(1)
 		}
 	}()

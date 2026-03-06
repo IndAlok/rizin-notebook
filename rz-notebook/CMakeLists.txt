@@ -70,11 +70,13 @@ find_package(protobuf-c CONFIG QUIET)
 if(protobuf-c_FOUND)
     message(STATUS "Found protobuf-c via CMake config")
     set(PROTOBUF_C_LIBS protobuf-c::protobuf-c)
+    get_target_property(PROTOBUF_C_INCLUDE_DIRS protobuf-c::protobuf-c INTERFACE_INCLUDE_DIRECTORIES)
 else()
     # Fallback: manual search.
     find_library(PROTOBUF_C_LIB NAMES protobuf-c REQUIRED)
     find_path(PROTOBUF_C_INC NAMES protobuf-c/protobuf-c.h REQUIRED)
     set(PROTOBUF_C_LIBS ${PROTOBUF_C_LIB})
+    set(PROTOBUF_C_INCLUDE_DIRS ${PROTOBUF_C_INC})
     message(STATUS "Found protobuf-c: ${PROTOBUF_C_LIB}")
 endif()
 
@@ -133,6 +135,7 @@ target_link_libraries(rz_notebook PRIVATE
 
 target_include_directories(rz_notebook PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${PROTOBUF_C_INCLUDE_DIRS}
     ${RZ_INCLUDE_DIRS}
 )
 
