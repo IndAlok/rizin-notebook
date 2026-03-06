@@ -66,11 +66,14 @@ jobs:
       - run: go mod download
 
       - name: Build
-        shell: bash
+        shell: pwsh
         run: |
-          OUT="rizin-notebook-${{ matrix.goos }}-${{ matrix.goarch }}"
-          go build -o "$OUT" -ldflags "-X main.NBVERSION=$(git rev-parse --short HEAD)"
-          if [ "${{ matrix.goos }}" = "windows" ]; then mv "$OUT" "$OUT.exe"; fi
+          $out = "rizin-notebook-${{ matrix.goos }}-${{ matrix.goarch }}"
+          $version = (git rev-parse --short HEAD).Trim()
+          go build -o $out -ldflags "-X main.NBVERSION=$version"
+          if ($env:GOOS -eq "windows") {
+            Rename-Item -Path $out -NewName "$out.exe"
+          }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -291,11 +294,19 @@ jobs:
       - uses: actions/download-artifact@v4
 
       - name: Generate SHA256SUMS
-        shell: bash
+        shell: pwsh
         run: |
-          find . -type f \
-            ! -name "SHA256SUMS.txt" \
-            -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+          $files = Get-ChildItem -Path . -Recurse -File |
+            Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
+            Sort-Object FullName
+
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $relative = [System.IO.Path]::GetRelativePath((Get-Location).Path, $file.FullName) -replace '\\', '/'
+            "$hash  $relative"
+          }
+
+          $lines | Set-Content -Path SHA256SUMS.txt -Encoding utf8
 
       - uses: actions/upload-artifact@v4
         with:
@@ -333,13 +344,14 @@ jobs:
           $targetCommitish = ""
 
           if ($env:GITHUB_EVENT_NAME -eq "workflow_dispatch") {
-            $requestedTag = $env:RAW_RELEASE_TAG.Trim()
+            $requestedTag = [string]$env:RAW_RELEASE_TAG
+            $requestedTag = $requestedTag.Trim()
             if ([string]::IsNullOrWhiteSpace($requestedTag)) {
               Write-Error "release_tag is required when publish_release=true"
               exit 1
             }
 
-            $name = $env:RAW_RELEASE_NAME.Trim()
+            $name = ([string]$env:RAW_RELEASE_NAME).Trim()
             if ([string]::IsNullOrWhiteSpace($name)) {
               $name = $requestedTag
             }
