@@ -79,6 +79,7 @@ private:
     void updateConnectionUI();
     QString computeFileHash(const QString &filePath);
     void verifyBinaryHash(const QString &serverHash);
+    QString currentBinaryPath();
 
     MainWindow *mainWindow = nullptr;
     QDockWidget *dockWidget = nullptr;

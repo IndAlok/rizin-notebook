@@ -179,13 +179,7 @@ void CutterNotebookPlugin::verifyBinaryHash(const QString &serverHash)
         return;
     }
 
-    QString localPath;
-    bool ok = false;
-    QString filePath = runCmd("o.", &ok);
-    if (ok && !filePath.isEmpty()) {
-        localPath = filePath;
-    }
-
+    QString localPath = currentBinaryPath();
     if (localPath.isEmpty()) {
         return;
     }
@@ -204,6 +198,33 @@ void CutterNotebookPlugin::verifyBinaryHash(const QString &serverHash)
                                             "You may be analyzing a different file than the one this page was created for.")
                                  .arg(localHash, serverHash));
     }
+}
+
+QString CutterNotebookPlugin::currentBinaryPath()
+{
+    // Use ij (info JSON) to reliably get the file path of the loaded binary.
+    // This is stable across all rizin versions and always available in Cutter.
+    QString ijOutput = Core()->cmdRaw(QStringLiteral("ij")).trimmed();
+    if (!ijOutput.isEmpty() && ijOutput.startsWith(QChar('{'))) {
+        QJsonDocument doc = QJsonDocument::fromJson(ijOutput.toUtf8());
+        if (doc.isObject()) {
+            QString file = doc.object()
+                .value(QStringLiteral("core")).toObject()
+                .value(QStringLiteral("file")).toString();
+            if (!file.isEmpty()) {
+                return file;
+            }
+        }
+    }
+    // Fallback: parse o. command output
+    QString raw = Core()->cmdRaw(QStringLiteral("o.")).trimmed();
+    if (!raw.isEmpty()
+        && !raw.contains(QStringLiteral("unknown"), Qt::CaseInsensitive)
+        && !raw.contains(QStringLiteral("invalid"), Qt::CaseInsensitive)
+        && !raw.contains(QStringLiteral("Usage"), Qt::CaseInsensitive)) {
+        return raw;
+    }
+    return {};
 }
 
 QByteArray CutterNotebookPlugin::sendJsonRequest(const QString &method,
@@ -242,7 +263,8 @@ QByteArray CutterNotebookPlugin::sendJsonRequest(const QString &method,
         reply->abort();
         loop.quit();
     });
-    timer.start(2500);
+    // Use longer timeout for POST requests that may carry binary data
+    timer.start(method == QLatin1String("POST") && body.size() > 100 ? 30000 : 5000);
     loop.exec();
 
     const int code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -1065,20 +1087,17 @@ void CutterNotebookPlugin::onNewPage()
 
     QJsonObject req;
     req.insert(QStringLiteral("title"), title);
-    const QString binaryPath = QFileDialog::getOpenFileName(nullptr,
-                                                            QStringLiteral("Optional Binary File"),
-                                                            QString(),
-                                                            QStringLiteral("All Files (*)"));
+
+    // Auto-detect and attach the binary currently loaded in Cutter.
+    // This mirrors the rizin plugin (NBn) which automatically reads
+    // the binary from the currently analyzed file — no file dialog needed.
+    const QString binaryPath = currentBinaryPath();
     if (!binaryPath.isEmpty()) {
         QFile file(binaryPath);
-        if (!file.open(QIODevice::ReadOnly)) {
-            QMessageBox::warning(nullptr,
-                                 QStringLiteral("Notebook"),
-                                 QStringLiteral("Failed to read binary file: %1").arg(binaryPath));
-            return;
+        if (file.open(QIODevice::ReadOnly)) {
+            req.insert(QStringLiteral("filename"), QFileInfo(binaryPath).fileName());
+            req.insert(QStringLiteral("binary_base64"), QString::fromLatin1(file.readAll().toBase64()));
         }
-        req.insert(QStringLiteral("filename"), QFileInfo(binaryPath).fileName());
-        req.insert(QStringLiteral("binary_base64"), QString::fromLatin1(file.readAll().toBase64()));
     }
     int statusCode = 0;
     QString error;
@@ -1115,6 +1134,26 @@ void CutterNotebookPlugin::onAttachBinary()
 {
     ensureDockVisible();
     const QString pageId = selectedPageId().isEmpty() ? activePageId : selectedPageId();
+    if (pageId.isEmpty()) {
+        QMessageBox::information(nullptr, QStringLiteral("Notebook"), QStringLiteral("Select a page first."));
+        return;
+    }
+    // Offer to attach the binary currently loaded in Cutter
+    const QString cutterBin = currentBinaryPath();
+    if (!cutterBin.isEmpty()) {
+        auto choice = QMessageBox::question(nullptr,
+            QStringLiteral("Notebook"),
+            QStringLiteral("Attach the currently loaded binary?\n\n%1\n\n"
+                           "Select 'No' to browse for a different file.").arg(cutterBin),
+            QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+        if (choice == QMessageBox::Cancel) {
+            return;
+        }
+        if (choice == QMessageBox::Yes) {
+            attachBinaryToPage(pageId, cutterBin);
+            return;
+        }
+    }
     attachBinaryToPage(pageId);
 }
 
@@ -1179,11 +1218,23 @@ void CutterNotebookPlugin::onOpenPipe()
     if (!obj.value(QStringLiteral("open")).toBool()) {
         const QString serverError = obj.value(QStringLiteral("error")).toString();
         if (serverError.contains(QStringLiteral("no binary attached"), Qt::CaseInsensitive)) {
-            if (QMessageBox::question(nullptr,
-                                      QStringLiteral("Notebook"),
-                                      QStringLiteral("This page has no binary attached yet. Select one now?")) == QMessageBox::Yes) {
-                if (attachBinaryToPage(pageId)) {
-                    onOpenPipe();
+            const QString cutterBin = currentBinaryPath();
+            if (!cutterBin.isEmpty()) {
+                if (QMessageBox::question(nullptr,
+                                          QStringLiteral("Notebook"),
+                                          QStringLiteral("This page has no binary attached. "
+                                                         "Attach the currently loaded binary?\n\n%1").arg(cutterBin)) == QMessageBox::Yes) {
+                    if (attachBinaryToPage(pageId, cutterBin)) {
+                        onOpenPipe();
+                    }
+                }
+            } else {
+                if (QMessageBox::question(nullptr,
+                                          QStringLiteral("Notebook"),
+                                          QStringLiteral("This page has no binary attached yet. Select one now?")) == QMessageBox::Yes) {
+                    if (attachBinaryToPage(pageId)) {
+                        onOpenPipe();
+                    }
                 }
             }
             return;
@@ -1229,8 +1280,8 @@ void CutterNotebookPlugin::onSubmitEditor()
 
     if (mode == QLatin1String("exec-command")) {
         /* Verify a file is open in Cutter before executing locally */
-        const QString currentFile = Core()->cmdRaw(QStringLiteral("o.")).trimmed();
-        if (currentFile.isEmpty() || currentFile.contains(QStringLiteral("No file open"), Qt::CaseInsensitive)) {
+        const QString currentFile = currentBinaryPath();
+        if (currentFile.isEmpty()) {
             QMessageBox::warning(nullptr, QStringLiteral("Notebook"),
                                  QStringLiteral("No file is open in Cutter. Open a binary first to execute commands locally."));
             return;
