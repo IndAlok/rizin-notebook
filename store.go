@@ -907,11 +907,19 @@ func (c *Catalog) ImportPage(data []byte) (string, error) {
 		).Scan(&legacyID, &legacyTitle, &legacyFilename, &legacyBinary, &legacyCreated, &legacyModified)
 		if err == nil && legacyTitle != "" {
 			// Migrate from legacy pages table into meta table.
-			pdb.InitMeta(newPageID, legacyTitle, legacyFilename, legacyBinary, "")
+			if merr := pdb.InitMeta(newPageID, legacyTitle, legacyFilename, legacyBinary, ""); merr != nil {
+				pdb.Close()
+				os.Remove(dbPath)
+				return "", fmt.Errorf("failed to create meta for imported page: %w", merr)
+			}
 			pdb.db.Exec("UPDATE meta SET created = ?, modified = ?", legacyCreated, legacyModified)
 		} else {
 			// No meta at all — create a default one.
-			pdb.InitMeta(newPageID, "Imported Page", "", "", "")
+			if merr := pdb.InitMeta(newPageID, "Imported Page", "", "", ""); merr != nil {
+				pdb.Close()
+				os.Remove(dbPath)
+				return "", fmt.Errorf("failed to create meta for imported page: %w", merr)
+			}
 		}
 	} else {
 		// Update the meta row to use the new page ID.

@@ -76,6 +76,9 @@ func cellRowToProto(c *CellRow) *pb.Cell {
 
 // pageRowToProto converts a database PageRow to a protobuf Page (without cells).
 func pageRowToProto(p *PageRow, pipeOpen bool) *pb.Page {
+	if p == nil {
+		return &pb.Page{}
+	}
 	return &pb.Page{
 		Id:         p.ID,
 		Title:      p.Title,
@@ -201,6 +204,13 @@ func cellRowToJSON(c *CellRow) gin.H {
 }
 
 func pageRowToJSON(p *PageRow, pipeOpen bool) gin.H {
+	if p == nil {
+		return gin.H{
+			"id": "", "title": "", "filename": "",
+			"binary": "", "binary_hash": "",
+			"pipe": false, "created": 0, "modified": 0,
+		}
+	}
 	return gin.H{
 		"id":          p.ID,
 		"title":       p.Title,

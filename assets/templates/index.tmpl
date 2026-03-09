@@ -37,16 +37,27 @@
         var formData = new FormData();
         formData.append('file', input.files[0]);
         fetch('{{ $root }}api/v1/json/pages/import', {method: 'POST', body: formData})
-          .then(function(r) { return r.json(); })
+          .then(function(r) {
+            if (!r.ok) {
+              return r.text().then(function(t) {
+                try { var j = JSON.parse(t); throw new Error(j.error || 'Server error ' + r.status); }
+                catch(e) { if (e.message) throw e; throw new Error('Server error ' + r.status); }
+              });
+            }
+            return r.json();
+          })
           .then(function(data) {
-            if (data.page && data.page.id) {
+            if (data && data.page && data.page.id) {
               window.location.href = '{{ $root }}view/' + data.page.id;
+            } else if (data && data.error) {
+              alert(data.error);
+              location.reload();
             } else {
-              alert(data.error || 'Import failed');
+              alert('Import failed: unexpected response');
               location.reload();
             }
           })
-          .catch(function(err) { alert('Import error: ' + err); });
+          .catch(function(err) { alert('Import error: ' + (err.message || err)); });
         input.value = '';
       }
     </script>
