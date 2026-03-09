@@ -90,8 +90,6 @@ CREATE TABLE IF NOT EXISTS config (
 	key   TEXT PRIMARY KEY,
 	value TEXT NOT NULL DEFAULT ''
 );
-
-CREATE INDEX IF NOT EXISTS idx_cells_pos ON cells(position);
 `
 
 // PageDB wraps a single .rznb SQLite database for one page.
@@ -111,7 +109,79 @@ func OpenPageDB(dbPath string) (*PageDB, error) {
 		db.Close()
 		return nil, fmt.Errorf("failed to apply page schema: %w", err)
 	}
-	return &PageDB{db: db, path: dbPath}, nil
+	pdb := &PageDB{db: db, path: dbPath}
+	pdb.ensureColumns()
+	return pdb, nil
+}
+
+// ensureColumns adds any missing columns to existing tables.
+// This is critical when importing .rznb files from older versions
+// where the schema may differ (e.g. missing position, executed,
+// binary_hash, or using "binary" instead of "binary_key").
+func (p *PageDB) ensureColumns() {
+	metaCols := p.columnNames("meta")
+	cellsCols := p.columnNames("cells")
+
+	// If meta exists but uses old "binary" column name, rename it.
+	if len(metaCols) > 0 {
+		if !stringSliceContains(metaCols, "binary_key") {
+			if stringSliceContains(metaCols, "binary") {
+				p.db.Exec("ALTER TABLE meta RENAME COLUMN \"binary\" TO binary_key")
+			} else {
+				p.db.Exec("ALTER TABLE meta ADD COLUMN binary_key TEXT NOT NULL DEFAULT ''")
+			}
+		}
+		if !stringSliceContains(metaCols, "binary_hash") {
+			p.db.Exec("ALTER TABLE meta ADD COLUMN binary_hash TEXT NOT NULL DEFAULT ''")
+		}
+	}
+
+	// Add missing cells columns.
+	if len(cellsCols) > 0 {
+		if !stringSliceContains(cellsCols, "position") {
+			p.db.Exec("ALTER TABLE cells ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
+			// Assign positions based on rowid order.
+			p.db.Exec("UPDATE cells SET position = rowid WHERE position = 0")
+		}
+		if !stringSliceContains(cellsCols, "executed") {
+			p.db.Exec("ALTER TABLE cells ADD COLUMN executed INTEGER NOT NULL DEFAULT 0")
+		}
+	}
+
+	// Ensure indexes exist.
+	p.db.Exec("CREATE INDEX IF NOT EXISTS idx_cells_pos ON cells(position)")
+}
+
+// columnNames returns all column names for a table, or nil if the table doesn't exist.
+func (p *PageDB) columnNames(table string) []string {
+	rows, err := p.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
+func stringSliceContains(ss []string, target string) bool {
+	for _, s := range ss {
+		if s == target {
+			return true
+		}
+	}
+	return false
 }
 
 // Close closes the database connection.
@@ -765,13 +835,15 @@ func (c *Catalog) GetBinaryForPipe(pageID, tempDir string) (string, error) {
 
 // ExportPage returns the raw bytes of a .rznb file for download.
 func (c *Catalog) ExportPage(pageID string) ([]byte, string, error) {
-	// Ensure the page DB is flushed.
-	c.mutex.Lock()
-	if pdb, ok := c.openPages[pageID]; ok {
-		// Checkpoint WAL so the main file is self-contained.
-		pdb.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	// Ensure the page is open and WAL is flushed.
+	pdb, err := c.OpenPage(pageID)
+	if err != nil {
+		return nil, "", fmt.Errorf("page not found: %w", err)
 	}
-	c.mutex.Unlock()
+
+	pdb.mutex.Lock()
+	pdb.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	pdb.mutex.Unlock()
 
 	dbPath := c.pageFilePath(pageID)
 	data, err := os.ReadFile(dbPath)
@@ -780,7 +852,7 @@ func (c *Catalog) ExportPage(pageID string) ([]byte, string, error) {
 	}
 
 	// Determine a nice filename.
-	meta, _ := c.GetPage(pageID)
+	meta, _ := pdb.GetMeta()
 	filename := pageID + RZNBExtension
 	if meta != nil && meta.Title != "" {
 		safe := strings.Map(func(r rune) rune {
@@ -809,19 +881,57 @@ func (c *Catalog) ImportPage(data []byte) (string, error) {
 		return "", fmt.Errorf("failed to write imported page: %w", err)
 	}
 
-	// Open it and update the internal page ID.
+	// Remove any WAL/SHM files that might exist alongside (stale from a
+	// different machine), so SQLite opens the DB cleanly.
+	os.Remove(dbPath + "-wal")
+	os.Remove(dbPath + "-shm")
+
+	// Open it — OpenPageDB will run CREATE TABLE IF NOT EXISTS for any
+	// missing tables and ensureColumns will ALTER TABLE ADD COLUMN for
+	// any missing columns (position, binary_hash, etc.).
 	pdb, err := OpenPageDB(dbPath)
 	if err != nil {
 		os.Remove(dbPath)
 		return "", fmt.Errorf("imported file is not a valid .rznb database: %w", err)
 	}
 
-	// Update the meta row to use the new page ID.
-	_, err = pdb.db.Exec("UPDATE meta SET id = ?", newPageID)
-	if err != nil {
-		pdb.Close()
-		os.Remove(dbPath)
-		return "", fmt.Errorf("failed to update imported page ID: %w", err)
+	// Ensure a meta row exists. Some older .rznb files might have the
+	// page info in a "pages" table instead of "meta".
+	meta, _ := pdb.GetMeta()
+	if meta == nil {
+		// Try to read from a legacy "pages" table if it exists.
+		var legacyID, legacyTitle, legacyFilename, legacyBinary string
+		var legacyCreated, legacyModified int64
+		err := pdb.db.QueryRow(
+			"SELECT id, title, filename, binary, created, modified FROM pages LIMIT 1",
+		).Scan(&legacyID, &legacyTitle, &legacyFilename, &legacyBinary, &legacyCreated, &legacyModified)
+		if err == nil && legacyTitle != "" {
+			// Migrate from legacy pages table into meta table.
+			pdb.InitMeta(newPageID, legacyTitle, legacyFilename, legacyBinary, "")
+			pdb.db.Exec("UPDATE meta SET created = ?, modified = ?", legacyCreated, legacyModified)
+		} else {
+			// No meta at all — create a default one.
+			pdb.InitMeta(newPageID, "Imported Page", "", "", "")
+		}
+	} else {
+		// Update the meta row to use the new page ID.
+		_, err = pdb.db.Exec("UPDATE meta SET id = ?", newPageID)
+		if err != nil {
+			pdb.Close()
+			os.Remove(dbPath)
+			return "", fmt.Errorf("failed to update imported page ID: %w", err)
+		}
+	}
+
+	// Recompute binary hash if binary exists but hash is missing.
+	meta, _ = pdb.GetMeta()
+	if meta != nil && meta.Binary != "" && meta.BinaryHash == "" {
+		binData, _ := pdb.GetBinary(meta.Binary)
+		if len(binData) > 0 {
+			hash := sha256.Sum256(binData)
+			hashHex := hex.EncodeToString(hash[:])
+			pdb.db.Exec("UPDATE meta SET binary_hash = ?", hashHex)
+		}
 	}
 
 	c.openPages[newPageID] = pdb

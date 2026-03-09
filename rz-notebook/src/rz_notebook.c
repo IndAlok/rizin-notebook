@@ -217,7 +217,13 @@ static RzCmdStatus cmd_nb_info(RzCore *core, int argc, const char **argv) {
 	Notebook__StatusResponse *st =
 		notebook__status_response__unpack(NULL, resp.body_len, resp.body);
 	if (!st) {
-		rz_cons_println("Failed to decode status response");
+		if (resp.body_len > 0 && (resp.body[0] == '{' || resp.body[0] == '[')) {
+			rz_cons_println("Server returned JSON (expected protobuf). Update rizin-notebook.exe.");
+			rz_cons_memcat((const char *)resp.body, resp.body_len);
+			rz_cons_newline();
+		} else {
+			rz_cons_println("Failed to decode status response");
+		}
 		nb_http_response_free(&resp);
 		return RZ_CMD_STATUS_ERROR;
 	}
@@ -263,7 +269,13 @@ static RzCmdStatus cmd_nb_list(RzCore *core, int argc, const char **argv) {
 	Notebook__ListPagesResponse *lp =
 		notebook__list_pages_response__unpack(NULL, resp.body_len, resp.body);
 	if (!lp) {
-		rz_cons_println("Failed to decode response");
+		if (resp.body_len > 0 && (resp.body[0] == '{' || resp.body[0] == '[')) {
+			rz_cons_println("Server returned JSON (expected protobuf). Update rizin-notebook.exe.");
+			rz_cons_memcat((const char *)resp.body, resp.body_len);
+			rz_cons_newline();
+		} else {
+			rz_cons_println("Failed to decode response");
+		}
 		nb_http_response_free(&resp);
 		return RZ_CMD_STATUS_ERROR;
 	}
@@ -692,6 +704,18 @@ static RzCmdStatus cmd_nb_export(RzCore *core, int argc, const char **argv) {
 	Notebook__ExportPageResponse *er =
 		notebook__export_page_response__unpack(NULL, resp.body_len, resp.body);
 	if (!er || er->data.len == 0) {
+		if (resp.body_len > 0 && resp.body[0] != '\x0a') {
+			// Server may have returned the raw .rznb file directly (JSON endpoint).
+			// Try to use the raw body as the export data.
+			const char *out_path = (argc >= 2) ? argv[1] : "export.rznb";
+			if (rz_file_dump(out_path, resp.body, (int)resp.body_len, false)) {
+				rz_cons_printf("Exported to: %s (%zu bytes)\n", out_path, resp.body_len);
+			} else {
+				rz_cons_printf("Failed to write file: %s\n", out_path);
+			}
+			nb_http_response_free(&resp);
+			return RZ_CMD_STATUS_OK;
+		}
 		rz_cons_println("Failed to decode export response or empty data");
 		nb_http_response_free(&resp);
 		if (er) notebook__export_page_response__free_unpacked(er, NULL);
