@@ -21,7 +21,7 @@ func serverAddMarkdown(markdown *gin.RouterGroup) {
 		}
 
 		eunique := Nonce(ElementNonceSize)
-		if err := store.AddCell(unique, eunique, "markdown", ""); err != nil {
+		if err := catalog.AddCell(unique, eunique, "markdown", ""); err != nil {
 			c.HTML(http.StatusNotFound, "error.tmpl", gin.H{
 				"root":  webroot,
 				"error": "failed to create markdown cell",
@@ -43,7 +43,7 @@ func serverAddMarkdown(markdown *gin.RouterGroup) {
 			return
 		}
 
-		cell, _ := store.GetCell(unique, eunique)
+		cell, _ := catalog.GetCell(unique, eunique)
 		var content string
 		if cell != nil {
 			content = cell.Content
@@ -67,7 +67,7 @@ func serverAddMarkdown(markdown *gin.RouterGroup) {
 			return
 		}
 
-		cell, _ := store.GetCell(unique, eunique)
+		cell, _ := catalog.GetCell(unique, eunique)
 		var content []byte
 		if cell != nil {
 			content = []byte(cell.Content)
@@ -92,7 +92,7 @@ func serverAddMarkdown(markdown *gin.RouterGroup) {
 		}
 
 		content := c.PostForm("markdown")
-		store.UpdateCellContent(unique, eunique, content)
+		catalog.UpdateCellContent(unique, eunique, content)
 
 		c.Redirect(http.StatusFound, webroot+"markdown/view/"+unique+"/"+eunique)
 	})
@@ -108,7 +108,7 @@ func serverAddMarkdown(markdown *gin.RouterGroup) {
 			return
 		}
 
-		store.DeleteCell(unique, eunique)
+		catalog.DeleteCell(unique, eunique)
 
 		// Redirect to "deleted" pseudo-page so iframe can detect removal.
 		c.Redirect(http.StatusFound, webroot+"markdown/deleted")

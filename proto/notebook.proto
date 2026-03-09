@@ -30,14 +30,15 @@ message Cell {
 
 // Page represents a notebook page containing cells and associated binary.
 message Page {
-  string id       = 1;  // Unique page identifier (32-char nonce).
-  string title    = 2;  // Human-readable page title.
-  string filename = 3;  // Original filename of the uploaded binary.
-  string binary   = 4;  // Storage key for the binary file.
-  bool   pipe     = 5;  // Whether a Rizin pipe is currently open.
-  int64  created  = 6;  // Unix timestamp of creation.
-  int64  modified = 7;  // Unix timestamp of last modification.
-  repeated Cell cells = 8;  // Ordered list of cells.
+  string id          = 1;  // Unique page identifier (32-char nonce).
+  string title       = 2;  // Human-readable page title.
+  string filename    = 3;  // Original filename of the uploaded binary.
+  string binary      = 4;  // Storage key for the binary file (internal use).
+  bool   pipe        = 5;  // Whether a Rizin pipe is currently open.
+  int64  created     = 6;  // Unix timestamp of creation.
+  int64  modified    = 7;  // Unix timestamp of last modification.
+  repeated Cell cells = 8; // Ordered list of cells.
+  string binary_hash = 9;  // SHA-256 hex digest of the bundled binary.
 }
 
 // ─── Request / Response Messages ────────────────────────────
@@ -153,6 +154,23 @@ message ExecScriptResponse {
   string error   = 3;
 }
 
+// ─── Record (client-side execution) ─────────────────────────
+
+// RecordCommandRequest records a pre-executed command+output as a cell.
+// Used by clients that execute commands locally (rizin plugin, Cutter).
+message RecordCommandRequest {
+  string page_id = 1;  // Required: page ID.
+  string command = 2;  // Required: the command that was executed.
+  bytes  output  = 3;  // Required: raw execution output.
+}
+
+// RecordCommandResponse returns the recorded cell.
+message RecordCommandResponse {
+  Cell   cell    = 1;  // The created command cell.
+  bool   success = 2;
+  string error   = 3;
+}
+
 // ─── Pipe Management ────────────────────────────────────────
 
 // PipeRequest opens or closes a Rizin pipe for a page.
@@ -164,6 +182,19 @@ message PipeRequest {
 message PipeResponse {
   bool   open  = 1;  // Whether the pipe is now open.
   string error = 2;  // Error message if operation failed.
+}
+
+// ─── Import / Export ────────────────────────────────────────
+
+// ExportPageResponse returns the raw .rznb database file for a page.
+message ExportPageResponse {
+  bytes  data     = 1;  // The complete .rznb SQLite database file.
+  string filename = 2;  // Suggested filename (e.g. "page-title.rznb").
+}
+
+// ImportPageResponse returns the imported page.
+message ImportPageResponse {
+  Page page = 1;  // The imported page.
 }
 
 // ─── Settings ───────────────────────────────────────────────

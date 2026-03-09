@@ -92,12 +92,12 @@ func (n *Notebook) open(unique string, open bool) *Rizin {
 		return nil
 	}
 
-	page, err := store.GetPage(unique)
+	page, err := catalog.GetPage(unique)
 	if err != nil || page == nil {
 		return nil
 	}
 
-	binaryPath, err := store.GetBinaryForPipe(unique, n.storage)
+	binaryPath, err := catalog.GetBinaryForPipe(unique, n.storage)
 	if err != nil {
 		fmt.Printf("warning: failed to extract binary for pipe: %v\n", err)
 		return nil

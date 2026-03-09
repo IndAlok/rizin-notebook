@@ -304,6 +304,8 @@
           {{ if $pipe }}Close Pipe{{ else }}Open Pipe{{ end }}
         </a>
         &nbsp;
+        <a href="{{ $root }}api/v1/json/pages/{{ $page.unique }}/export" class="btn" download>Export .rznb</a>
+        &nbsp;
         <a href="{{ $root }}" class="btn btn-primary">Go Back</a>
       </section>
     </header>
@@ -313,6 +315,11 @@
           <div class="input-group spacing-top">
             <code class="input-group-addon spacing-right">File: {{ if $page.filename }}{{ $page.filename }}{{ else }}none attached{{ end }}</code>
           </div>
+          {{ if $page.binaryHash }}
+          <div class="input-group spacing-top">
+            <code class="input-group-addon spacing-right" style="font-size: 11px;">SHA-256: {{ $page.binaryHash }}</code>
+          </div>
+          {{ end }}
         </div>
       </div>
     </section>

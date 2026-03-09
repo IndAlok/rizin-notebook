@@ -27,28 +27,11 @@ public:
     QString getDescription() const override {
         return "Provides a native Cutter client for the shared rizin-notebook server.";
     }
-    QString getVersion() const override { return "1.0.0"; }
+    QString getVersion() const override { return "2.0.0"; }
 
-private:
-    QString runCmd(const QString &cmd, bool *ok = nullptr);
-    QString notebookBaseUrl(bool *fromNBPlugin = nullptr);
-    void setNotebookBaseUrl(const QString &url);
-    bool ensureNotebookReady(QString *statusOut = nullptr, bool showDialog = true);
-    QByteArray sendJsonRequest(const QString &method,
-                               const QString &path,
-                               const QByteArray &body = QByteArray(),
-                               int *statusCode = nullptr,
-                               QString *errorOut = nullptr);
-    bool populatePages(bool keepSelection = true);
-    bool loadPage(const QString &pageId, bool focusView = false);
-    bool attachBinaryToPage(const QString &pageId, const QString &filePath = QString());
-    void renderPage(const QVariantMap &page);
-    QString selectedPageId() const;
-    void updateComposeLabels(const QVariantMap &page = QVariantMap());
-    void updateEditorPlaceholder();
-    void refreshDockStatus();
-    void ensureDockVisible();
-
+private slots:
+    void onConnect();
+    void onSpawn();
     void onServerStatus();
     void onListPages();
     void onNewPage();
@@ -60,6 +43,42 @@ private:
     void onReloadSelectedPage();
     void onOpenBrowser();
     void onSetUrl();
+    void onExportPage();
+    void onImportPage();
+
+private:
+    QString runCmd(const QString &cmd, bool *ok = nullptr);
+    QString notebookBaseUrl(bool *fromNBPlugin = nullptr);
+    void setNotebookBaseUrl(const QString &url);
+    bool ensureNotebookReady(bool showDialog = true);
+    QByteArray sendJsonRequest(const QString &method,
+                               const QString &path,
+                               const QByteArray &body = QByteArray(),
+                               int *statusCode = nullptr,
+                               QString *errorOut = nullptr);
+    QByteArray sendRawGetRequest(const QString &path,
+                                 int *statusCode = nullptr,
+                                 QString *contentDisposition = nullptr,
+                                 QString *errorOut = nullptr);
+    QByteArray sendMultipartPost(const QString &path,
+                                 const QString &fieldName,
+                                 const QString &fileName,
+                                 const QByteArray &fileData,
+                                 int *statusCode = nullptr,
+                                 QString *errorOut = nullptr);
+    bool populatePages(bool keepSelection = true);
+    bool loadPage(const QString &pageId, bool focusView = false);
+    bool attachBinaryToPage(const QString &pageId, const QString &filePath = QString());
+    void renderPage(const QVariantMap &page);
+    QString selectedPageId() const;
+    void setActivePage(const QString &pageId);
+    void updateComposeLabels(const QVariantMap &page = QVariantMap());
+    void updateEditorPlaceholder();
+    void refreshDockStatus();
+    void ensureDockVisible();
+    void updateConnectionUI();
+    QString computeFileHash(const QString &filePath);
+    void verifyBinaryHash(const QString &serverHash);
 
     MainWindow *mainWindow = nullptr;
     QDockWidget *dockWidget = nullptr;
@@ -72,5 +91,6 @@ private:
     QComboBox *editorMode = nullptr;
     QTabWidget *dockTabs = nullptr;
     QString currentServerUrl;
-    QString currentPageId;
+    QString activePageId;
+    bool connected = false;
 };

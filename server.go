@@ -32,7 +32,7 @@ func setupRouter(assets, bind string, debug bool) *gin.Engine {
 
 	// Index page: list all notebook pages
 	root.GET("/", func(c *gin.Context) {
-		pages, err := store.ListPages()
+		pages, err := catalog.ListPages()
 		if err != nil {
 			c.HTML(500, "error.tmpl", gin.H{"root": webroot, "error": err.Error()})
 			return

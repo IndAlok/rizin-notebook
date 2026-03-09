@@ -19,7 +19,7 @@ func serverAddOutput(output *gin.RouterGroup) {
 			return
 		}
 
-		cell, _ := store.GetCell(unique, eunique)
+		cell, _ := catalog.GetCell(unique, eunique)
 		var data []byte
 		if cell != nil {
 			data = cell.Output
@@ -45,7 +45,7 @@ func serverAddOutput(output *gin.RouterGroup) {
 			return
 		}
 
-		store.DeleteCell(unique, eunique)
+		catalog.DeleteCell(unique, eunique)
 
 		c.Redirect(http.StatusFound, webroot+"output/deleted")
 	})
@@ -123,7 +123,7 @@ func serverAddOutput(output *gin.RouterGroup) {
 
 		// Create a command cell and save the output in SQLite.
 		eunique := Nonce(ElementNonceSize)
-		if storeErr := store.AddCell(unique, eunique, "command", command); storeErr != nil {
+		if storeErr := catalog.AddCell(unique, eunique, "command", command); storeErr != nil {
 			c.HTML(http.StatusInternalServerError, "console-error.tmpl", gin.H{
 				"root":  webroot,
 				"error": "Failed to create command element",
@@ -131,7 +131,7 @@ func serverAddOutput(output *gin.RouterGroup) {
 			return
 		}
 
-		store.UpdateCellOutput(unique, eunique, []byte(result))
+		catalog.UpdateCellOutput(unique, eunique, []byte(result))
 
 		// Redirect to "loaded" to trigger parent page reload.
 		c.Redirect(http.StatusFound, webroot+"output/loaded")
@@ -159,7 +159,7 @@ func serverAddOutput(output *gin.RouterGroup) {
 
 		// Create a script cell in SQLite.
 		eunique := Nonce(ElementNonceSize)
-		if storeErr := store.AddCell(unique, eunique, "script", script); storeErr != nil {
+		if storeErr := catalog.AddCell(unique, eunique, "script", script); storeErr != nil {
 			c.HTML(http.StatusInternalServerError, "console-error.tmpl", gin.H{
 				"root":  webroot,
 				"error": "Failed to create script element",
@@ -172,7 +172,7 @@ func serverAddOutput(output *gin.RouterGroup) {
 		result, err := notebook.jsvm.exec(script, rz)
 
 		if err != nil {
-			store.UpdateCellOutput(unique, eunique, []byte(err.Error()))
+			catalog.UpdateCellOutput(unique, eunique, []byte(err.Error()))
 			c.HTML(200, "console-error.tmpl", gin.H{
 				"root":  webroot,
 				"error": err.Error(),
@@ -180,7 +180,7 @@ func serverAddOutput(output *gin.RouterGroup) {
 			return
 		}
 
-		store.UpdateCellOutput(unique, eunique, []byte(result))
+		catalog.UpdateCellOutput(unique, eunique, []byte(result))
 
 		// Redirect to "loaded" to trigger parent page reload.
 		c.Redirect(http.StatusFound, webroot+"output/loaded")

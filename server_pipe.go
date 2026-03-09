@@ -19,7 +19,7 @@ func serverAddPipe(pipe *gin.RouterGroup) {
 			return
 		}
 
-		page, err := store.GetPage(unique)
+		page, err := catalog.GetPage(unique)
 		if err != nil || page == nil {
 			c.HTML(http.StatusNotFound, "error.tmpl", gin.H{
 				"root":  webroot,

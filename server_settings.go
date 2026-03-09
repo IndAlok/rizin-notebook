@@ -12,7 +12,7 @@ func serverAddSettings(root *gin.RouterGroup) {
 
 	// View current settings.
 	root.GET("/settings", func(c *gin.Context) {
-		settings, _ := store.GetAllSettings()
+		settings, _ := catalog.GetAllSettings()
 		if settings == nil {
 			settings = map[string]string{}
 		}
@@ -32,7 +32,7 @@ func serverAddSettings(root *gin.RouterGroup) {
 			editkey = key
 		}
 
-		settings, _ := store.GetAllSettings()
+		settings, _ := catalog.GetAllSettings()
 		if settings == nil {
 			settings = map[string]string{}
 		}
@@ -67,21 +67,21 @@ func handleEnvironmentSettings(c *gin.Context) {
 	switch subaction {
 	case "new":
 		if len(key) > 0 {
-			store.SetSetting(key, value)
+			catalog.SetSetting(key, value)
 			os.Setenv(key, value)
 		}
 	case "edit":
 		if len(editkey) > 0 && len(key) > 0 {
 			if editkey != key {
-				store.DeleteSetting(editkey)
+				catalog.DeleteSetting(editkey)
 				os.Unsetenv(editkey)
 			}
-			store.SetSetting(key, value)
+			catalog.SetSetting(key, value)
 			os.Setenv(key, value)
 		}
 	case "delete":
 		if len(editkey) > 0 {
-			store.DeleteSetting(editkey)
+			catalog.DeleteSetting(editkey)
 			os.Unsetenv(editkey)
 		}
 	}

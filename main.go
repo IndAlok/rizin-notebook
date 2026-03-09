@@ -19,7 +19,7 @@ var (
 	webroot   string
 	notebook  *Notebook
 	config    *NotebookConfig
-	store     *Store
+	catalog   *Catalog
 )
 
 func usage() {
@@ -62,22 +62,29 @@ func main() {
 	config = NewNotebookConfig(dataDir)
 	config.UpdateEnvironment()
 
-	// Initialize SQLite store.
+	// Initialize catalog (per-page .rznb storage).
 	var err error
-	store, err = NewStore(dataDir)
+	catalog, err = NewCatalog(dataDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "fatal: cannot open database: %v\n", err)
+		fmt.Fprintf(os.Stderr, "fatal: cannot open catalog: %v\n", err)
 		os.Exit(1)
 	}
-	defer store.Close()
+	defer catalog.Close()
 
-	// Import JSON page data into SQLite if present.
-	if migrated, merr := store.MigrateFromJSON(dataDir); merr != nil {
+	// Migrate legacy monolithic notebook.db into per-page .rznb files.
+	if migrated, merr := catalog.MigrateFromLegacyDB(dataDir); merr != nil {
+		fmt.Printf("warning: legacy DB migration error: %v\n", merr)
+	} else if migrated > 0 {
+		fmt.Printf("Migrated %d pages from legacy notebook.db to .rznb files.\n", migrated)
+	}
+
+	// Import JSON page data into .rznb files if present.
+	if migrated, merr := catalog.MigrateFromJSON(dataDir); merr != nil {
 		fmt.Printf("warning: JSON migration error: %v\n", merr)
 	} else if migrated > 0 {
-		fmt.Printf("Migrated %d pages from JSON to SQLite.\n", migrated)
+		fmt.Printf("Migrated %d pages from JSON to .rznb files.\n", migrated)
 	}
-	if merr := store.MigrateSettings(dataDir); merr != nil {
+	if merr := catalog.MigrateSettings(dataDir); merr != nil {
 		fmt.Printf("warning: settings migration error: %v\n", merr)
 	}
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -75,13 +76,14 @@ func cellRowToProto(c *CellRow) *pb.Cell {
 // pageRowToProto converts a database PageRow to a protobuf Page (without cells).
 func pageRowToProto(p *PageRow, pipeOpen bool) *pb.Page {
 	return &pb.Page{
-		Id:       p.ID,
-		Title:    p.Title,
-		Filename: p.Filename,
-		Binary:   p.Binary,
-		Pipe:     pipeOpen,
-		Created:  p.Created,
-		Modified: p.Modified,
+		Id:         p.ID,
+		Title:      p.Title,
+		Filename:   p.Filename,
+		Binary:     p.Binary,
+		BinaryHash: p.BinaryHash,
+		Pipe:       pipeOpen,
+		Created:    p.Created,
+		Modified:   p.Modified,
 	}
 }
 
@@ -113,6 +115,11 @@ func serverAddAPI(root *gin.RouterGroup) {
 	// ─── Execution ──────────────────────────────────────
 	api.POST("/pages/:id/exec", apiExecCommand)
 	api.POST("/pages/:id/script", apiExecScript)
+	api.POST("/pages/:id/record", apiRecordCommand)
+
+	// ─── Export / Import ───────────────────────────────
+	api.GET("/pages/:id/export", apiExportPage)
+	api.POST("/pages/import", apiImportPage)
 
 	// ─── Pipe Management ────────────────────────────────
 	api.POST("/pages/:id/pipe/open", apiPipeOpen)
@@ -133,6 +140,9 @@ func serverAddAPI(root *gin.RouterGroup) {
 	jsonAPI.POST("/pages/:id/cells", apiJSONAddCell)
 	jsonAPI.POST("/pages/:id/exec", apiJSONExecCommand)
 	jsonAPI.POST("/pages/:id/script", apiJSONExecScript)
+	jsonAPI.POST("/pages/:id/record", apiJSONRecordCommand)
+	jsonAPI.GET("/pages/:id/export", apiJSONExportPage)
+	jsonAPI.POST("/pages/import", apiJSONImportPage)
 	jsonAPI.POST("/pages/:id/pipe/open", apiJSONPipeOpen)
 	jsonAPI.POST("/pages/:id/pipe/close", apiJSONPipeClose)
 }
@@ -173,7 +183,7 @@ func apiStatus(c *gin.Context) {
 		RizinVersion: rzversion,
 		RizinPath:    rzpath,
 		Storage:      notebook.storage,
-		Pages:        int32(store.PageCount()),
+		Pages:        int32(catalog.PageCount()),
 		OpenPipes:    int32(openPipes),
 	})
 }
@@ -191,13 +201,14 @@ func cellRowToJSON(c *CellRow) gin.H {
 
 func pageRowToJSON(p *PageRow, pipeOpen bool) gin.H {
 	return gin.H{
-		"id":       p.ID,
-		"title":    p.Title,
-		"filename": p.Filename,
-		"binary":   p.Binary,
-		"pipe":     pipeOpen,
-		"created":  p.Created,
-		"modified": p.Modified,
+		"id":          p.ID,
+		"title":       p.Title,
+		"filename":    p.Filename,
+		"binary":      p.Binary,
+		"binary_hash": p.BinaryHash,
+		"pipe":        pipeOpen,
+		"created":     p.Created,
+		"modified":    p.Modified,
 	}
 }
 
@@ -224,7 +235,7 @@ func jsonStatusPayload() gin.H {
 		"rizin_version": rzversion,
 		"rizin_path":    rzpath,
 		"storage":       notebook.storage,
-		"pages":         store.PageCount(),
+		"pages":         catalog.PageCount(),
 		"open_pipes":    openPipes,
 	}
 }
@@ -234,7 +245,7 @@ func apiJSONStatus(c *gin.Context) {
 }
 
 func apiJSONListPages(c *gin.Context) {
-	pages, err := store.ListPages()
+	pages, err := catalog.ListPages()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -248,7 +259,7 @@ func apiJSONListPages(c *gin.Context) {
 		notebook.mutex.Unlock()
 
 		item := pageRowToJSON(p, pipeOpen)
-		cells, _ := store.ListCells(p.ID)
+		cells, _ := catalog.ListCells(p.ID)
 		item["cells_count"] = len(cells)
 		list = append(list, item)
 	}
@@ -263,7 +274,7 @@ func apiJSONGetPage(c *gin.Context) {
 		return
 	}
 
-	page, err := store.GetPage(id)
+	page, err := catalog.GetPage(id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -278,7 +289,7 @@ func apiJSONGetPage(c *gin.Context) {
 	notebook.mutex.Unlock()
 
 	resp := pageRowToJSON(page, pipeOpen)
-	cells, err := store.ListCells(id)
+	cells, err := catalog.ListCells(id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -321,25 +332,13 @@ func apiJSONCreatePage(c *gin.Context) {
 		filename = req.Title
 	}
 
-	pageID := Nonce(PageNonceSize)
-	binaryKey := ""
-	if len(binary) > 0 {
-		binaryKey = Nonce(ElementNonceSize)
-	}
-
-	if err := store.CreatePage(pageID, req.Title, filename, binaryKey); err != nil {
+	pageID, err := catalog.CreatePage(req.Title, filename, binary)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create page: " + err.Error()})
 		return
 	}
-	if binaryKey != "" {
-		if err := store.SaveBinary(pageID, binaryKey, binary); err != nil {
-			store.DeletePage(pageID)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save binary: " + err.Error()})
-			return
-		}
-	}
 
-	page, _ := store.GetPage(pageID)
+	page, _ := catalog.GetPage(pageID)
 	c.JSON(http.StatusCreated, gin.H{"page": pageRowToJSON(page, false)})
 }
 
@@ -350,7 +349,7 @@ func apiJSONDeletePage(c *gin.Context) {
 		return
 	}
 	notebook.closePipe(id)
-	if err := store.DeletePage(id); err != nil {
+	if err := catalog.DeletePage(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete page: " + err.Error()})
 		return
 	}
@@ -391,12 +390,12 @@ func apiJSONAttachBinary(c *gin.Context) {
 		return
 	}
 
-	if err := store.AttachBinary(pageID, req.Filename, binary); err != nil {
+	if err := catalog.AttachBinary(pageID, req.Filename, binary); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save binary: " + err.Error()})
 		return
 	}
 
-	page, err := store.GetPage(pageID)
+	page, err := catalog.GetPage(pageID)
 	if err != nil || page == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load updated page"})
 		return
@@ -431,11 +430,11 @@ func apiJSONAddCell(c *gin.Context) {
 		return
 	}
 	cellID := Nonce(ElementNonceSize)
-	if err := store.AddCell(pageID, cellID, req.Type, req.Content); err != nil {
+	if err := catalog.AddCell(pageID, cellID, req.Type, req.Content); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create cell: " + err.Error()})
 		return
 	}
-	cell, _ := store.GetCell(pageID, cellID)
+	cell, _ := catalog.GetCell(pageID, cellID)
 	c.JSON(http.StatusCreated, gin.H{"cell": cellRowToJSON(cell)})
 }
 
@@ -463,7 +462,7 @@ func apiJSONExecCommand(c *gin.Context) {
 	}
 	result, err := rz.exec(req.Command)
 	cellID := Nonce(ElementNonceSize)
-	if storeErr := store.AddCell(pageID, cellID, "command", req.Command); storeErr != nil {
+	if storeErr := catalog.AddCell(pageID, cellID, "command", req.Command); storeErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create cell: " + storeErr.Error()})
 		return
 	}
@@ -471,11 +470,11 @@ func apiJSONExecCommand(c *gin.Context) {
 	if err != nil {
 		output = []byte(err.Error())
 	}
-	if storeErr := store.UpdateCellOutput(pageID, cellID, output); storeErr != nil {
+	if storeErr := catalog.UpdateCellOutput(pageID, cellID, output); storeErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save output: " + storeErr.Error()})
 		return
 	}
-	cell, _ := store.GetCell(pageID, cellID)
+	cell, _ := catalog.GetCell(pageID, cellID)
 	c.JSON(http.StatusOK, gin.H{"success": err == nil, "error": errorString(err), "cell": cellRowToJSON(cell)})
 }
 
@@ -498,7 +497,7 @@ func apiJSONExecScript(c *gin.Context) {
 	}
 	rz := notebook.open(pageID, true)
 	cellID := Nonce(ElementNonceSize)
-	if storeErr := store.AddCell(pageID, cellID, "script", req.Script); storeErr != nil {
+	if storeErr := catalog.AddCell(pageID, cellID, "script", req.Script); storeErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create cell: " + storeErr.Error()})
 		return
 	}
@@ -507,11 +506,11 @@ func apiJSONExecScript(c *gin.Context) {
 	if err != nil {
 		output = []byte(err.Error())
 	}
-	if storeErr := store.UpdateCellOutput(pageID, cellID, output); storeErr != nil {
+	if storeErr := catalog.UpdateCellOutput(pageID, cellID, output); storeErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save output: " + storeErr.Error()})
 		return
 	}
-	cell, _ := store.GetCell(pageID, cellID)
+	cell, _ := catalog.GetCell(pageID, cellID)
 	c.JSON(http.StatusOK, gin.H{"success": err == nil, "error": errorString(err), "cell": cellRowToJSON(cell)})
 }
 
@@ -521,7 +520,7 @@ func apiJSONPipeOpen(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page identifier"})
 		return
 	}
-	page, err := store.GetPage(pageID)
+	page, err := catalog.GetPage(pageID)
 	if err != nil || page == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "page not found"})
 		return
@@ -558,7 +557,7 @@ func errorString(err error) string {
 // ─── Pages ──────────────────────────────────────────────────
 
 func apiListPages(c *gin.Context) {
-	pages, err := store.ListPages()
+	pages, err := catalog.ListPages()
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
@@ -574,7 +573,7 @@ func apiListPages(c *gin.Context) {
 		pbPage := pageRowToProto(p, pipeOpen)
 
 		// Include cell count info but not full cell data for list.
-		cells, _ := store.ListCells(p.ID)
+		cells, _ := catalog.ListCells(p.ID)
 		if cells != nil {
 			pbPage.Cells = make([]*pb.Cell, len(cells))
 			for j := range cells {
@@ -595,7 +594,7 @@ func apiGetPage(c *gin.Context) {
 		return
 	}
 
-	page, err := store.GetPage(id)
+	page, err := catalog.GetPage(id)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
@@ -611,7 +610,7 @@ func apiGetPage(c *gin.Context) {
 
 	pbPage := pageRowToProto(page, pipeOpen)
 
-	cells, err := store.ListCells(id)
+	cells, err := catalog.ListCells(id)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
@@ -639,26 +638,13 @@ func apiCreatePage(c *gin.Context) {
 		filename = req.Title
 	}
 
-	pageID := Nonce(PageNonceSize)
-	binaryKey := ""
-	if len(req.Binary) > 0 {
-		binaryKey = Nonce(ElementNonceSize)
-	}
-
-	if err := store.CreatePage(pageID, req.Title, filename, binaryKey); err != nil {
+	pageID, err := catalog.CreatePage(req.Title, filename, req.Binary)
+	if err != nil {
 		respondError(c, http.StatusInternalServerError, "failed to create page: "+err.Error())
 		return
 	}
 
-	if binaryKey != "" {
-		if err := store.SaveBinary(pageID, binaryKey, req.Binary); err != nil {
-			store.DeletePage(pageID)
-			respondError(c, http.StatusInternalServerError, "failed to save binary: "+err.Error())
-			return
-		}
-	}
-
-	page, _ := store.GetPage(pageID)
+	page, _ := catalog.GetPage(pageID)
 	respondProto(c, http.StatusCreated, &pb.CreatePageResponse{
 		Page: pageRowToProto(page, false),
 	})
@@ -682,7 +668,7 @@ func apiUpdatePage(c *gin.Context) {
 		return
 	}
 
-	if err := store.RenamePage(id, req.Title); err != nil {
+	if err := catalog.RenamePage(id, req.Title); err != nil {
 		respondError(c, http.StatusInternalServerError, "failed to update page: "+err.Error())
 		return
 	}
@@ -700,7 +686,7 @@ func apiDeletePage(c *gin.Context) {
 	// Close the pipe first.
 	notebook.closePipe(id)
 
-	if err := store.DeletePage(id); err != nil {
+	if err := catalog.DeletePage(id); err != nil {
 		respondError(c, http.StatusInternalServerError, "failed to delete page: "+err.Error())
 		return
 	}
@@ -723,7 +709,7 @@ func apiAddCell(c *gin.Context) {
 		return
 	}
 
-	page, err := store.GetPage(pageID)
+	page, err := catalog.GetPage(pageID)
 	if err != nil || page == nil {
 		respondError(c, http.StatusNotFound, "page not found")
 		return
@@ -743,12 +729,12 @@ func apiAddCell(c *gin.Context) {
 	}
 
 	cellID := Nonce(ElementNonceSize)
-	if err := store.AddCell(pageID, cellID, cellType, req.Content); err != nil {
+	if err := catalog.AddCell(pageID, cellID, cellType, req.Content); err != nil {
 		respondError(c, http.StatusInternalServerError, "failed to add cell: "+err.Error())
 		return
 	}
 
-	cell, _ := store.GetCell(pageID, cellID)
+	cell, _ := catalog.GetCell(pageID, cellID)
 	respondProto(c, http.StatusCreated, &pb.AddCellResponse{
 		Cell: cellRowToProto(cell),
 	})
@@ -762,7 +748,7 @@ func apiGetCellOutput(c *gin.Context) {
 		return
 	}
 
-	cell, err := store.GetCell(pageID, cellID)
+	cell, err := catalog.GetCell(pageID, cellID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
@@ -795,7 +781,7 @@ func apiUpdateCell(c *gin.Context) {
 		return
 	}
 
-	if err := store.UpdateCellContent(pageID, cellID, req.Content); err != nil {
+	if err := catalog.UpdateCellContent(pageID, cellID, req.Content); err != nil {
 		respondError(c, http.StatusInternalServerError, "failed to update cell: "+err.Error())
 		return
 	}
@@ -811,7 +797,7 @@ func apiDeleteCell(c *gin.Context) {
 		return
 	}
 
-	if err := store.DeleteCell(pageID, cellID); err != nil {
+	if err := catalog.DeleteCell(pageID, cellID); err != nil {
 		respondError(c, http.StatusInternalServerError, "failed to delete cell: "+err.Error())
 		return
 	}
@@ -858,17 +844,17 @@ func apiExecCommand(c *gin.Context) {
 
 	// Create cell and save output.
 	cellID := Nonce(ElementNonceSize)
-	if storeErr := store.AddCell(pageID, cellID, "command", req.Command); storeErr != nil {
+	if storeErr := catalog.AddCell(pageID, cellID, "command", req.Command); storeErr != nil {
 		respondError(c, http.StatusInternalServerError, "failed to create cell: "+storeErr.Error())
 		return
 	}
 
-	if storeErr := store.UpdateCellOutput(pageID, cellID, []byte(result)); storeErr != nil {
+	if storeErr := catalog.UpdateCellOutput(pageID, cellID, []byte(result)); storeErr != nil {
 		respondError(c, http.StatusInternalServerError, "failed to save output: "+storeErr.Error())
 		return
 	}
 
-	cell, _ := store.GetCell(pageID, cellID)
+	cell, _ := catalog.GetCell(pageID, cellID)
 	respondProto(c, http.StatusOK, &pb.ExecCommandResponse{
 		Cell:    cellRowToProto(cell),
 		Success: true,
@@ -898,7 +884,7 @@ func apiExecScript(c *gin.Context) {
 
 	// Create the cell first.
 	cellID := Nonce(ElementNonceSize)
-	if storeErr := store.AddCell(pageID, cellID, "script", req.Script); storeErr != nil {
+	if storeErr := catalog.AddCell(pageID, cellID, "script", req.Script); storeErr != nil {
 		respondError(c, http.StatusInternalServerError, "failed to create cell: "+storeErr.Error())
 		return
 	}
@@ -908,8 +894,8 @@ func apiExecScript(c *gin.Context) {
 	var outputBytes []byte
 	if err != nil {
 		outputBytes = []byte(err.Error())
-		store.UpdateCellOutput(pageID, cellID, outputBytes)
-		cell, _ := store.GetCell(pageID, cellID)
+		catalog.UpdateCellOutput(pageID, cellID, outputBytes)
+		cell, _ := catalog.GetCell(pageID, cellID)
 		respondProto(c, http.StatusOK, &pb.ExecScriptResponse{
 			Cell:    cellRowToProto(cell),
 			Success: false,
@@ -919,8 +905,8 @@ func apiExecScript(c *gin.Context) {
 	}
 
 	outputBytes = []byte(result)
-	store.UpdateCellOutput(pageID, cellID, outputBytes)
-	cell, _ := store.GetCell(pageID, cellID)
+	catalog.UpdateCellOutput(pageID, cellID, outputBytes)
+	cell, _ := catalog.GetCell(pageID, cellID)
 
 	respondProto(c, http.StatusOK, &pb.ExecScriptResponse{
 		Cell:    cellRowToProto(cell),
@@ -937,7 +923,7 @@ func apiPipeOpen(c *gin.Context) {
 		return
 	}
 
-	page, err := store.GetPage(pageID)
+	page, err := catalog.GetPage(pageID)
 	if err != nil || page == nil {
 		respondError(c, http.StatusNotFound, "page not found")
 		return
@@ -973,10 +959,166 @@ func apiPipeClose(c *gin.Context) {
 	respondProto(c, http.StatusOK, &pb.PipeResponse{Open: false})
 }
 
+// ─── Record / Export / Import ────────────────────────────────
+
+func apiRecordCommand(c *gin.Context) {
+	pageID := c.Param("id")
+	if !IsValidNonce(pageID, PageNonceSize) {
+		respondError(c, http.StatusBadRequest, "invalid page identifier")
+		return
+	}
+
+	var req pb.RecordCommandRequest
+	if err := readProto(c, &req); err != nil {
+		respondError(c, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+
+	if req.Command == "" {
+		respondError(c, http.StatusBadRequest, "command is required")
+		return
+	}
+
+	cellID := Nonce(ElementNonceSize)
+	if err := catalog.AddCell(pageID, cellID, "command", req.Command); err != nil {
+		respondError(c, http.StatusInternalServerError, "failed to create cell: "+err.Error())
+		return
+	}
+
+	if len(req.Output) > 0 {
+		if err := catalog.UpdateCellOutput(pageID, cellID, req.Output); err != nil {
+			respondError(c, http.StatusInternalServerError, "failed to save output: "+err.Error())
+			return
+		}
+	}
+
+	cell, _ := catalog.GetCell(pageID, cellID)
+	respondProto(c, http.StatusOK, &pb.RecordCommandResponse{
+		Cell:    cellRowToProto(cell),
+		Success: true,
+	})
+}
+
+func apiJSONRecordCommand(c *gin.Context) {
+	pageID := c.Param("id")
+	if !IsValidNonce(pageID, PageNonceSize) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page identifier"})
+		return
+	}
+
+	var req struct {
+		Command string `json:"command"`
+		Output  string `json:"output"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
+		return
+	}
+	if req.Command == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "command is required"})
+		return
+	}
+
+	cellID := Nonce(ElementNonceSize)
+	if err := catalog.AddCell(pageID, cellID, "command", req.Command); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create cell: " + err.Error()})
+		return
+	}
+
+	if req.Output != "" {
+		if err := catalog.UpdateCellOutput(pageID, cellID, []byte(req.Output)); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save output: " + err.Error()})
+			return
+		}
+	}
+
+	cell, _ := catalog.GetCell(pageID, cellID)
+	c.JSON(http.StatusOK, gin.H{"success": true, "cell": cellRowToJSON(cell)})
+}
+
+func apiExportPage(c *gin.Context) {
+	pageID := c.Param("id")
+	if !IsValidNonce(pageID, PageNonceSize) {
+		respondError(c, http.StatusBadRequest, "invalid page identifier")
+		return
+	}
+
+	data, filename, err := catalog.ExportPage(pageID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "failed to export page: "+err.Error())
+		return
+	}
+
+	respondProto(c, http.StatusOK, &pb.ExportPageResponse{
+		Data:     data,
+		Filename: filename,
+	})
+}
+
+func apiJSONExportPage(c *gin.Context) {
+	pageID := c.Param("id")
+	if !IsValidNonce(pageID, PageNonceSize) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page identifier"})
+		return
+	}
+
+	data, filename, err := catalog.ExportPage(pageID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to export page: " + err.Error()})
+		return
+	}
+
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	c.Data(http.StatusOK, "application/octet-stream", data)
+}
+
+func apiImportPage(c *gin.Context) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "failed to read request body: "+err.Error())
+		return
+	}
+
+	pageID, err := catalog.ImportPage(body)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "failed to import page: "+err.Error())
+		return
+	}
+
+	page, _ := catalog.GetPage(pageID)
+	respondProto(c, http.StatusOK, &pb.ImportPageResponse{
+		Page: pageRowToProto(page, false),
+	})
+}
+
+func apiJSONImportPage(c *gin.Context) {
+	file, _, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file upload required: " + err.Error()})
+		return
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file: " + err.Error()})
+		return
+	}
+
+	pageID, err := catalog.ImportPage(data)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to import page: " + err.Error()})
+		return
+	}
+
+	page, _ := catalog.GetPage(pageID)
+	c.JSON(http.StatusOK, gin.H{"page": pageRowToJSON(page, false)})
+}
+
 // ─── Settings ───────────────────────────────────────────────
 
 func apiGetSettings(c *gin.Context) {
-	settings, err := store.GetAllSettings()
+	settings, err := catalog.GetAllSettings()
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
@@ -996,7 +1138,7 @@ func apiSetSetting(c *gin.Context) {
 		return
 	}
 
-	if err := store.SetSetting(req.Key, req.Value); err != nil {
+	if err := catalog.SetSetting(req.Key, req.Value); err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1014,7 +1156,7 @@ func apiDeleteSetting(c *gin.Context) {
 		return
 	}
 
-	if err := store.DeleteSetting(key); err != nil {
+	if err := catalog.DeleteSetting(key); err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
 	}

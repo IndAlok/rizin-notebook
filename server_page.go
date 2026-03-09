@@ -31,7 +31,7 @@ func serverAddPage(root *gin.RouterGroup) {
 			return
 		}
 
-		page, err := store.GetPage(unique)
+		page, err := catalog.GetPage(unique)
 		if err != nil || page == nil {
 			c.HTML(http.StatusNotFound, "error.tmpl", gin.H{
 				"root":  webroot,
@@ -93,7 +93,7 @@ func serverAddPage(root *gin.RouterGroup) {
 				})
 				return
 			}
-			if err := store.RenamePage(unique, title); err != nil {
+			if err := catalog.RenamePage(unique, title); err != nil {
 				c.HTML(http.StatusInternalServerError, "error.tmpl", gin.H{
 					"root":  webroot,
 					"error": "Failed to update page",
@@ -101,7 +101,7 @@ func serverAddPage(root *gin.RouterGroup) {
 				return
 			}
 			if len(uploadData) > 0 {
-				if err := store.AttachBinary(unique, uploadName, uploadData); err != nil {
+				if err := catalog.AttachBinary(unique, uploadName, uploadData); err != nil {
 					c.HTML(http.StatusInternalServerError, "error.tmpl", gin.H{
 						"root":  webroot,
 						"error": "Failed to save binary file",
@@ -114,33 +114,13 @@ func serverAddPage(root *gin.RouterGroup) {
 		}
 
 		// Creating a new page: uploaded binary is optional.
-		pageID := Nonce(PageNonceSize)
-		binaryKey := ""
-		filename := ""
-		if len(uploadData) > 0 {
-			binaryKey = Nonce(ElementNonceSize)
-			filename = uploadName
-		}
-
-		// Create the page in SQLite.
-		if storeErr := store.CreatePage(pageID, title, filename, binaryKey); storeErr != nil {
+		pageID, createErr := catalog.CreatePage(title, uploadName, uploadData)
+		if createErr != nil {
 			c.HTML(http.StatusInternalServerError, "error.tmpl", gin.H{
 				"root":  webroot,
 				"error": "Failed to create page",
 			})
 			return
-		}
-
-		// Save the binary to SQLite if provided.
-		if binaryKey != "" {
-			if storeErr := store.SaveBinary(pageID, binaryKey, uploadData); storeErr != nil {
-				store.DeletePage(pageID)
-				c.HTML(http.StatusInternalServerError, "error.tmpl", gin.H{
-					"root":  webroot,
-					"error": "Failed to save binary file",
-				})
-				return
-			}
 		}
 
 		c.Redirect(http.StatusFound, webroot+"view/"+pageID)
@@ -157,7 +137,7 @@ func serverAddPage(root *gin.RouterGroup) {
 			return
 		}
 
-		page, err := store.GetPage(unique)
+		page, err := catalog.GetPage(unique)
 		if err != nil || page == nil {
 			c.HTML(http.StatusNotFound, "error.tmpl", gin.H{
 				"root":  webroot,
@@ -170,7 +150,7 @@ func serverAddPage(root *gin.RouterGroup) {
 		pipe := notebook.open(unique, false) != nil
 
 		// Load cells from SQLite.
-		cells, _ := store.ListCells(unique)
+		cells, _ := catalog.ListCells(unique)
 		lines := make([]interface{}, len(cells))
 		for i, cell := range cells {
 			lines[i] = gin.H{
@@ -182,12 +162,13 @@ func serverAddPage(root *gin.RouterGroup) {
 		}
 
 		pageData := gin.H{
-			"title":    page.Title,
-			"unique":   page.ID,
-			"filename": page.Filename,
-			"binary":   page.Binary,
-			"hasBinary": page.Binary != "",
-			"lines":    lines,
+			"title":      page.Title,
+			"unique":     page.ID,
+			"filename":   page.Filename,
+			"binary":     page.Binary,
+			"binaryHash": page.BinaryHash,
+			"hasBinary":  page.Binary != "",
+			"lines":      lines,
 		}
 
 		c.HTML(200, "page-view.tmpl", gin.H{
@@ -210,7 +191,7 @@ func serverAddPage(root *gin.RouterGroup) {
 		}
 
 		notebook.closePipe(unique)
-		store.DeletePage(unique)
+		catalog.DeletePage(unique)
 		c.Redirect(http.StatusFound, webroot)
 	})
 }

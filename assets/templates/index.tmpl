@@ -32,6 +32,23 @@
         if (!confirm('Delete "' + title + '" and all its data?')) return;
         window.location.href = e.target.closest('a').href;
       }
+      function importRznb(input) {
+        if (!input.files || !input.files[0]) return;
+        var formData = new FormData();
+        formData.append('file', input.files[0]);
+        fetch('{{ $root }}api/v1/json/pages/import', {method: 'POST', body: formData})
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (data.page && data.page.id) {
+              window.location.href = '{{ $root }}view/' + data.page.id;
+            } else {
+              alert(data.error || 'Import failed');
+              location.reload();
+            }
+          })
+          .catch(function(err) { alert('Import error: ' + err); });
+        input.value = '';
+      }
     </script>
 </head>
 <body>
@@ -47,6 +64,10 @@
                 <a href="{{ $root }}about" class="btn">About</a>
                 &nbsp;
                 <a href="{{ $root }}new" class="btn btn-primary">New Page</a>
+                &nbsp;
+                <label class="btn" style="cursor: pointer;">Import .rznb
+                    <input type="file" accept=".rznb" style="display:none" onchange="importRznb(this)">
+                </label>
             </section>
         </header>
         <section class="container">
