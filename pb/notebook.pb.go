@@ -1532,6 +1532,67 @@ func (x *ImportPageResponse) GetPage() *Page {
 	return nil
 }
 
+// DownloadBinaryResponse returns the raw binary associated with a page.
+type DownloadBinaryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`         // The raw binary file content.
+	Filename      string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"` // Original filename (e.g. "crackme.exe").
+	Hash          string                 `protobuf:"bytes,3,opt,name=hash,proto3" json:"hash,omitempty"`         // SHA-256 hex digest of the binary.
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DownloadBinaryResponse) Reset() {
+	*x = DownloadBinaryResponse{}
+	mi := &file_proto_notebook_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DownloadBinaryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DownloadBinaryResponse) ProtoMessage() {}
+
+func (x *DownloadBinaryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_notebook_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DownloadBinaryResponse.ProtoReflect.Descriptor instead.
+func (*DownloadBinaryResponse) Descriptor() ([]byte, []int) {
+	return file_proto_notebook_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *DownloadBinaryResponse) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *DownloadBinaryResponse) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *DownloadBinaryResponse) GetHash() string {
+	if x != nil {
+		return x.Hash
+	}
+	return ""
+}
+
 // SettingsResponse returns all environment variable settings.
 type SettingsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1542,7 +1603,7 @@ type SettingsResponse struct {
 
 func (x *SettingsResponse) Reset() {
 	*x = SettingsResponse{}
-	mi := &file_proto_notebook_proto_msgTypes[25]
+	mi := &file_proto_notebook_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1554,7 +1615,7 @@ func (x *SettingsResponse) String() string {
 func (*SettingsResponse) ProtoMessage() {}
 
 func (x *SettingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_notebook_proto_msgTypes[25]
+	mi := &file_proto_notebook_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1567,7 +1628,7 @@ func (x *SettingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettingsResponse.ProtoReflect.Descriptor instead.
 func (*SettingsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_notebook_proto_rawDescGZIP(), []int{25}
+	return file_proto_notebook_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *SettingsResponse) GetEnvironment() map[string]string {
@@ -1588,7 +1649,7 @@ type SetSettingRequest struct {
 
 func (x *SetSettingRequest) Reset() {
 	*x = SetSettingRequest{}
-	mi := &file_proto_notebook_proto_msgTypes[26]
+	mi := &file_proto_notebook_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1600,7 +1661,7 @@ func (x *SetSettingRequest) String() string {
 func (*SetSettingRequest) ProtoMessage() {}
 
 func (x *SetSettingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_notebook_proto_msgTypes[26]
+	mi := &file_proto_notebook_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1613,7 +1674,7 @@ func (x *SetSettingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSettingRequest.ProtoReflect.Descriptor instead.
 func (*SetSettingRequest) Descriptor() ([]byte, []int) {
-	return file_proto_notebook_proto_rawDescGZIP(), []int{26}
+	return file_proto_notebook_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *SetSettingRequest) GetKey() string {
@@ -1640,7 +1701,7 @@ type DeleteSettingRequest struct {
 
 func (x *DeleteSettingRequest) Reset() {
 	*x = DeleteSettingRequest{}
-	mi := &file_proto_notebook_proto_msgTypes[27]
+	mi := &file_proto_notebook_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1652,7 +1713,7 @@ func (x *DeleteSettingRequest) String() string {
 func (*DeleteSettingRequest) ProtoMessage() {}
 
 func (x *DeleteSettingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_notebook_proto_msgTypes[27]
+	mi := &file_proto_notebook_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1665,7 +1726,7 @@ func (x *DeleteSettingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSettingRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSettingRequest) Descriptor() ([]byte, []int) {
-	return file_proto_notebook_proto_rawDescGZIP(), []int{27}
+	return file_proto_notebook_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *DeleteSettingRequest) GetKey() string {
@@ -1686,7 +1747,7 @@ type ErrorResponse struct {
 
 func (x *ErrorResponse) Reset() {
 	*x = ErrorResponse{}
-	mi := &file_proto_notebook_proto_msgTypes[28]
+	mi := &file_proto_notebook_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1698,7 +1759,7 @@ func (x *ErrorResponse) String() string {
 func (*ErrorResponse) ProtoMessage() {}
 
 func (x *ErrorResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_notebook_proto_msgTypes[28]
+	mi := &file_proto_notebook_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1711,7 +1772,7 @@ func (x *ErrorResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ErrorResponse.ProtoReflect.Descriptor instead.
 func (*ErrorResponse) Descriptor() ([]byte, []int) {
-	return file_proto_notebook_proto_rawDescGZIP(), []int{28}
+	return file_proto_notebook_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ErrorResponse) GetCode() int32 {
@@ -1739,7 +1800,7 @@ type SuccessResponse struct {
 
 func (x *SuccessResponse) Reset() {
 	*x = SuccessResponse{}
-	mi := &file_proto_notebook_proto_msgTypes[29]
+	mi := &file_proto_notebook_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1751,7 +1812,7 @@ func (x *SuccessResponse) String() string {
 func (*SuccessResponse) ProtoMessage() {}
 
 func (x *SuccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_notebook_proto_msgTypes[29]
+	mi := &file_proto_notebook_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1764,7 +1825,7 @@ func (x *SuccessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SuccessResponse.ProtoReflect.Descriptor instead.
 func (*SuccessResponse) Descriptor() ([]byte, []int) {
-	return file_proto_notebook_proto_rawDescGZIP(), []int{29}
+	return file_proto_notebook_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *SuccessResponse) GetOk() bool {
@@ -1880,7 +1941,11 @@ const file_proto_notebook_proto_rawDesc = "" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\"8\n" +
 	"\x12ImportPageResponse\x12\"\n" +
-	"\x04page\x18\x01 \x01(\v2\x0e.notebook.PageR\x04page\"\xa1\x01\n" +
+	"\x04page\x18\x01 \x01(\v2\x0e.notebook.PageR\x04page\"\\\n" +
+	"\x16DownloadBinaryResponse\x12\x12\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data\x12\x1a\n" +
+	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x12\n" +
+	"\x04hash\x18\x03 \x01(\tR\x04hash\"\xa1\x01\n" +
 	"\x10SettingsResponse\x12M\n" +
 	"\venvironment\x18\x01 \x03(\v2+.notebook.SettingsResponse.EnvironmentEntryR\venvironment\x1a>\n" +
 	"\x10EnvironmentEntry\x12\x10\n" +
@@ -1916,40 +1981,41 @@ func file_proto_notebook_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_notebook_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proto_notebook_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
+var file_proto_notebook_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
 var file_proto_notebook_proto_goTypes = []any{
-	(CellType)(0),                 // 0: notebook.CellType
-	(*Cell)(nil),                  // 1: notebook.Cell
-	(*Page)(nil),                  // 2: notebook.Page
-	(*StatusResponse)(nil),        // 3: notebook.StatusResponse
-	(*ListPagesResponse)(nil),     // 4: notebook.ListPagesResponse
-	(*GetPageResponse)(nil),       // 5: notebook.GetPageResponse
-	(*CreatePageRequest)(nil),     // 6: notebook.CreatePageRequest
-	(*CreatePageResponse)(nil),    // 7: notebook.CreatePageResponse
-	(*UpdatePageRequest)(nil),     // 8: notebook.UpdatePageRequest
-	(*DeletePageRequest)(nil),     // 9: notebook.DeletePageRequest
-	(*AddCellRequest)(nil),        // 10: notebook.AddCellRequest
-	(*AddCellResponse)(nil),       // 11: notebook.AddCellResponse
-	(*UpdateCellRequest)(nil),     // 12: notebook.UpdateCellRequest
-	(*DeleteCellRequest)(nil),     // 13: notebook.DeleteCellRequest
-	(*GetCellOutputRequest)(nil),  // 14: notebook.GetCellOutputRequest
-	(*GetCellOutputResponse)(nil), // 15: notebook.GetCellOutputResponse
-	(*ExecCommandRequest)(nil),    // 16: notebook.ExecCommandRequest
-	(*ExecCommandResponse)(nil),   // 17: notebook.ExecCommandResponse
-	(*ExecScriptRequest)(nil),     // 18: notebook.ExecScriptRequest
-	(*ExecScriptResponse)(nil),    // 19: notebook.ExecScriptResponse
-	(*RecordCommandRequest)(nil),  // 20: notebook.RecordCommandRequest
-	(*RecordCommandResponse)(nil), // 21: notebook.RecordCommandResponse
-	(*PipeRequest)(nil),           // 22: notebook.PipeRequest
-	(*PipeResponse)(nil),          // 23: notebook.PipeResponse
-	(*ExportPageResponse)(nil),    // 24: notebook.ExportPageResponse
-	(*ImportPageResponse)(nil),    // 25: notebook.ImportPageResponse
-	(*SettingsResponse)(nil),      // 26: notebook.SettingsResponse
-	(*SetSettingRequest)(nil),     // 27: notebook.SetSettingRequest
-	(*DeleteSettingRequest)(nil),  // 28: notebook.DeleteSettingRequest
-	(*ErrorResponse)(nil),         // 29: notebook.ErrorResponse
-	(*SuccessResponse)(nil),       // 30: notebook.SuccessResponse
-	nil,                           // 31: notebook.SettingsResponse.EnvironmentEntry
+	(CellType)(0),                  // 0: notebook.CellType
+	(*Cell)(nil),                   // 1: notebook.Cell
+	(*Page)(nil),                   // 2: notebook.Page
+	(*StatusResponse)(nil),         // 3: notebook.StatusResponse
+	(*ListPagesResponse)(nil),      // 4: notebook.ListPagesResponse
+	(*GetPageResponse)(nil),        // 5: notebook.GetPageResponse
+	(*CreatePageRequest)(nil),      // 6: notebook.CreatePageRequest
+	(*CreatePageResponse)(nil),     // 7: notebook.CreatePageResponse
+	(*UpdatePageRequest)(nil),      // 8: notebook.UpdatePageRequest
+	(*DeletePageRequest)(nil),      // 9: notebook.DeletePageRequest
+	(*AddCellRequest)(nil),         // 10: notebook.AddCellRequest
+	(*AddCellResponse)(nil),        // 11: notebook.AddCellResponse
+	(*UpdateCellRequest)(nil),      // 12: notebook.UpdateCellRequest
+	(*DeleteCellRequest)(nil),      // 13: notebook.DeleteCellRequest
+	(*GetCellOutputRequest)(nil),   // 14: notebook.GetCellOutputRequest
+	(*GetCellOutputResponse)(nil),  // 15: notebook.GetCellOutputResponse
+	(*ExecCommandRequest)(nil),     // 16: notebook.ExecCommandRequest
+	(*ExecCommandResponse)(nil),    // 17: notebook.ExecCommandResponse
+	(*ExecScriptRequest)(nil),      // 18: notebook.ExecScriptRequest
+	(*ExecScriptResponse)(nil),     // 19: notebook.ExecScriptResponse
+	(*RecordCommandRequest)(nil),   // 20: notebook.RecordCommandRequest
+	(*RecordCommandResponse)(nil),  // 21: notebook.RecordCommandResponse
+	(*PipeRequest)(nil),            // 22: notebook.PipeRequest
+	(*PipeResponse)(nil),           // 23: notebook.PipeResponse
+	(*ExportPageResponse)(nil),     // 24: notebook.ExportPageResponse
+	(*ImportPageResponse)(nil),     // 25: notebook.ImportPageResponse
+	(*DownloadBinaryResponse)(nil), // 26: notebook.DownloadBinaryResponse
+	(*SettingsResponse)(nil),       // 27: notebook.SettingsResponse
+	(*SetSettingRequest)(nil),      // 28: notebook.SetSettingRequest
+	(*DeleteSettingRequest)(nil),   // 29: notebook.DeleteSettingRequest
+	(*ErrorResponse)(nil),          // 30: notebook.ErrorResponse
+	(*SuccessResponse)(nil),        // 31: notebook.SuccessResponse
+	nil,                            // 32: notebook.SettingsResponse.EnvironmentEntry
 }
 var file_proto_notebook_proto_depIdxs = []int32{
 	0,  // 0: notebook.Cell.type:type_name -> notebook.CellType
@@ -1963,7 +2029,7 @@ var file_proto_notebook_proto_depIdxs = []int32{
 	1,  // 8: notebook.ExecScriptResponse.cell:type_name -> notebook.Cell
 	1,  // 9: notebook.RecordCommandResponse.cell:type_name -> notebook.Cell
 	2,  // 10: notebook.ImportPageResponse.page:type_name -> notebook.Page
-	31, // 11: notebook.SettingsResponse.environment:type_name -> notebook.SettingsResponse.EnvironmentEntry
+	32, // 11: notebook.SettingsResponse.environment:type_name -> notebook.SettingsResponse.EnvironmentEntry
 	12, // [12:12] is the sub-list for method output_type
 	12, // [12:12] is the sub-list for method input_type
 	12, // [12:12] is the sub-list for extension type_name
@@ -1982,7 +2048,7 @@ func file_proto_notebook_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_notebook_proto_rawDesc), len(file_proto_notebook_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   31,
+			NumMessages:   32,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

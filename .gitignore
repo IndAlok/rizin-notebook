@@ -39,8 +39,8 @@ cutter-notebook-plugin/build/
 cutter-notebook-plugin/cmake-build-*/
 cutter-notebook-plugin/.qt/
 cutter-notebook-plugin/*.zip
-rz-notebook/build/
-rz-notebook/cmake-build-*/
+rizin-notebook-plugin/build/
+rizin-notebook-plugin/cmake-build-*/
 .DS_Store
 Thumbs.db
 embedded-rizin-check.txt

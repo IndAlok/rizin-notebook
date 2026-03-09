@@ -121,6 +121,9 @@ func serverAddAPI(root *gin.RouterGroup) {
 	api.POST("/pages/:id/script", apiExecScript)
 	api.POST("/pages/:id/record", apiRecordCommand)
 
+	// ─── Binary Download ────────────────────────────────
+	api.GET("/pages/:id/binary", apiDownloadBinary)
+
 	// ─── Export / Import ───────────────────────────────
 	api.GET("/pages/:id/export", apiExportPage)
 	api.POST("/pages/import", apiImportPage)
@@ -141,6 +144,7 @@ func serverAddAPI(root *gin.RouterGroup) {
 	jsonAPI.POST("/pages", apiJSONCreatePage)
 	jsonAPI.DELETE("/pages/:id", apiJSONDeletePage)
 	jsonAPI.POST("/pages/:id/binary", apiJSONAttachBinary)
+	jsonAPI.GET("/pages/:id/binary", apiJSONDownloadBinary)
 	jsonAPI.POST("/pages/:id/cells", apiJSONAddCell)
 	jsonAPI.POST("/pages/:id/exec", apiJSONExecCommand)
 	jsonAPI.POST("/pages/:id/script", apiJSONExecScript)
@@ -1064,6 +1068,74 @@ func apiExportPage(c *gin.Context) {
 		Data:     data,
 		Filename: filename,
 	})
+}
+
+// ─── Binary Download ────────────────────────────────────────
+
+func apiDownloadBinary(c *gin.Context) {
+	pageID := c.Param("id")
+	if !IsValidNonce(pageID, PageNonceSize) {
+		respondError(c, http.StatusBadRequest, "invalid page identifier")
+		return
+	}
+
+	page, err := catalog.GetPage(pageID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "failed to load page: "+err.Error())
+		return
+	}
+	if page == nil {
+		respondError(c, http.StatusNotFound, "page not found")
+		return
+	}
+	if page.Binary == "" {
+		respondError(c, http.StatusNotFound, "page has no attached binary")
+		return
+	}
+
+	data, err := catalog.GetBinary(pageID, page.Binary)
+	if err != nil || len(data) == 0 {
+		respondError(c, http.StatusNotFound, "binary data not found")
+		return
+	}
+
+	respondProto(c, http.StatusOK, &pb.DownloadBinaryResponse{
+		Data:     data,
+		Filename: page.Filename,
+		Hash:     page.BinaryHash,
+	})
+}
+
+func apiJSONDownloadBinary(c *gin.Context) {
+	pageID := c.Param("id")
+	if !IsValidNonce(pageID, PageNonceSize) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page identifier"})
+		return
+	}
+
+	page, err := catalog.GetPage(pageID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load page: " + err.Error()})
+		return
+	}
+	if page == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "page not found"})
+		return
+	}
+	if page.Binary == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "page has no attached binary"})
+		return
+	}
+
+	data, err := catalog.GetBinary(pageID, page.Binary)
+	if err != nil || len(data) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "binary data not found"})
+		return
+	}
+
+	// Return as raw octet-stream with Content-Disposition for download.
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, page.Filename))
+	c.Data(http.StatusOK, "application/octet-stream", data)
 }
 
 func apiJSONExportPage(c *gin.Context) {

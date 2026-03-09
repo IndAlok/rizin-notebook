@@ -422,6 +422,7 @@ static RzCmdStatus cmd_nb_open(RzCore *core, int argc, const char **argv) {
 	if (gp->page->binary_hash && gp->page->binary_hash[0]) {
 		const char *cur_file = nb_current_filename(core);
 		if (cur_file) {
+			// A file is open — check hash match.
 			size_t file_len = 0;
 			uint8_t *file_data = (uint8_t *)rz_file_slurp(cur_file, &file_len);
 			if (file_data && file_len > 0) {
@@ -436,6 +437,50 @@ static RzCmdStatus cmd_nb_open(RzCore *core, int argc, const char **argv) {
 				}
 			}
 			free(file_data);
+		} else if (gp->page->binary && gp->page->binary[0]) {
+			// No file is open but the page has an attached binary — download and open it.
+			rz_cons_println("No file loaded. Downloading binary from notebook...");
+
+			char bin_path[256];
+			snprintf(bin_path, sizeof(bin_path), "/api/v1/pages/%s/binary", page_id);
+
+			NbHttpResponse bin_resp;
+			memset(&bin_resp, 0, sizeof(bin_resp));
+			if (!nb_http_get(bin_path, &bin_resp) || !bin_resp.ok) {
+				rz_cons_printf("Warning: failed to download binary: %s\n",
+					bin_resp.error ? bin_resp.error : "request failed");
+				nb_http_response_free(&bin_resp);
+			} else {
+				Notebook__DownloadBinaryResponse *dl =
+					notebook__download_binary_response__unpack(NULL, bin_resp.body_len, bin_resp.body);
+				nb_http_response_free(&bin_resp);
+
+				if (!dl || !dl->data.data || dl->data.len == 0) {
+					rz_cons_println("Warning: empty binary data received");
+					if (dl) notebook__download_binary_response__free_unpacked(dl, NULL);
+				} else {
+					// Save to a temp file and open in rizin.
+					char *tmp_path = rz_file_temp("rznb");
+					if (!tmp_path) {
+						rz_cons_println("Warning: failed to create temp file");
+					} else if (!rz_file_dump(tmp_path, dl->data.data, (int)dl->data.len, false)) {
+						rz_cons_printf("Warning: failed to write temp file: %s\n", tmp_path);
+						free(tmp_path);
+						tmp_path = NULL;
+					} else {
+						rz_cons_printf("Binary saved to: %s\n", tmp_path);
+						if (rz_core_file_open_load(core, tmp_path, 0, RZ_PERM_R, false)) {
+							rz_cons_printf("Loaded binary: %s (%s)\n",
+								dl->filename ? dl->filename : "unknown",
+								dl->hash ? dl->hash : "no hash");
+						} else {
+							rz_cons_printf("Warning: failed to open binary: %s\n", tmp_path);
+						}
+						free(tmp_path);
+					}
+					notebook__download_binary_response__free_unpacked(dl, NULL);
+				}
+			}
 		}
 	}
 

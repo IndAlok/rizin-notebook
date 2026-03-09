@@ -197,6 +197,13 @@ message ImportPageResponse {
   Page page = 1;  // The imported page.
 }
 
+// DownloadBinaryResponse returns the raw binary associated with a page.
+message DownloadBinaryResponse {
+  bytes  data     = 1;  // The raw binary file content.
+  string filename = 2;  // Original filename (e.g. "crackme.exe").
+  string hash     = 3;  // SHA-256 hex digest of the binary.
+}
+
 // ─── Settings ───────────────────────────────────────────────
 
 // SettingsResponse returns all environment variable settings.
