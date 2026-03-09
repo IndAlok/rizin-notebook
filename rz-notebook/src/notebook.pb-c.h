@@ -34,8 +34,12 @@ typedef struct Notebook__ExecCommandRequest Notebook__ExecCommandRequest;
 typedef struct Notebook__ExecCommandResponse Notebook__ExecCommandResponse;
 typedef struct Notebook__ExecScriptRequest Notebook__ExecScriptRequest;
 typedef struct Notebook__ExecScriptResponse Notebook__ExecScriptResponse;
+typedef struct Notebook__RecordCommandRequest Notebook__RecordCommandRequest;
+typedef struct Notebook__RecordCommandResponse Notebook__RecordCommandResponse;
 typedef struct Notebook__PipeRequest Notebook__PipeRequest;
 typedef struct Notebook__PipeResponse Notebook__PipeResponse;
+typedef struct Notebook__ExportPageResponse Notebook__ExportPageResponse;
+typedef struct Notebook__ImportPageResponse Notebook__ImportPageResponse;
 typedef struct Notebook__SettingsResponse Notebook__SettingsResponse;
 typedef struct Notebook__SettingsResponse__EnvironmentEntry Notebook__SettingsResponse__EnvironmentEntry;
 typedef struct Notebook__SetSettingRequest Notebook__SetSettingRequest;
@@ -114,7 +118,7 @@ struct  Notebook__Page
    */
   char *filename;
   /*
-   * Storage key for the binary file.
+   * Storage key for the binary file (internal use).
    */
   char *binary;
   /*
@@ -134,10 +138,14 @@ struct  Notebook__Page
    */
   size_t n_cells;
   Notebook__Cell **cells;
+  /*
+   * SHA-256 hex digest of the bundled binary.
+   */
+  char *binary_hash;
 };
 #define NOTEBOOK__PAGE__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&notebook__page__descriptor) \
-, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, 0, 0, 0, 0,NULL }
+, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, 0, 0, 0, 0,NULL, (char *)protobuf_c_empty_string }
 
 
 /*
@@ -478,6 +486,49 @@ struct  Notebook__ExecScriptResponse
 
 
 /*
+ * RecordCommandRequest records a pre-executed command+output as a cell.
+ * Used by clients that execute commands locally (rizin plugin, Cutter).
+ */
+struct  Notebook__RecordCommandRequest
+{
+  ProtobufCMessage base;
+  /*
+   * Required: page ID.
+   */
+  char *page_id;
+  /*
+   * Required: the command that was executed.
+   */
+  char *command;
+  /*
+   * Required: raw execution output.
+   */
+  ProtobufCBinaryData output;
+};
+#define NOTEBOOK__RECORD_COMMAND_REQUEST__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&notebook__record_command_request__descriptor) \
+, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, {0,NULL} }
+
+
+/*
+ * RecordCommandResponse returns the recorded cell.
+ */
+struct  Notebook__RecordCommandResponse
+{
+  ProtobufCMessage base;
+  /*
+   * The created command cell.
+   */
+  Notebook__Cell *cell;
+  protobuf_c_boolean success;
+  char *error;
+};
+#define NOTEBOOK__RECORD_COMMAND_RESPONSE__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&notebook__record_command_response__descriptor) \
+, NULL, 0, (char *)protobuf_c_empty_string }
+
+
+/*
  * PipeRequest opens or closes a Rizin pipe for a page.
  */
 struct  Notebook__PipeRequest
@@ -511,6 +562,42 @@ struct  Notebook__PipeResponse
 #define NOTEBOOK__PIPE_RESPONSE__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&notebook__pipe_response__descriptor) \
 , 0, (char *)protobuf_c_empty_string }
+
+
+/*
+ * ExportPageResponse returns the raw .rznb database file for a page.
+ */
+struct  Notebook__ExportPageResponse
+{
+  ProtobufCMessage base;
+  /*
+   * The complete .rznb SQLite database file.
+   */
+  ProtobufCBinaryData data;
+  /*
+   * Suggested filename (e.g. "page-title.rznb").
+   */
+  char *filename;
+};
+#define NOTEBOOK__EXPORT_PAGE_RESPONSE__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&notebook__export_page_response__descriptor) \
+, {0,NULL}, (char *)protobuf_c_empty_string }
+
+
+/*
+ * ImportPageResponse returns the imported page.
+ */
+struct  Notebook__ImportPageResponse
+{
+  ProtobufCMessage base;
+  /*
+   * The imported page.
+   */
+  Notebook__Page *page;
+};
+#define NOTEBOOK__IMPORT_PAGE_RESPONSE__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&notebook__import_page_response__descriptor) \
+, NULL }
 
 
 struct  Notebook__SettingsResponse__EnvironmentEntry
@@ -960,6 +1047,44 @@ Notebook__ExecScriptResponse *
 void   notebook__exec_script_response__free_unpacked
                      (Notebook__ExecScriptResponse *message,
                       ProtobufCAllocator *allocator);
+/* Notebook__RecordCommandRequest methods */
+void   notebook__record_command_request__init
+                     (Notebook__RecordCommandRequest         *message);
+size_t notebook__record_command_request__get_packed_size
+                     (const Notebook__RecordCommandRequest   *message);
+size_t notebook__record_command_request__pack
+                     (const Notebook__RecordCommandRequest   *message,
+                      uint8_t             *out);
+size_t notebook__record_command_request__pack_to_buffer
+                     (const Notebook__RecordCommandRequest   *message,
+                      ProtobufCBuffer     *buffer);
+Notebook__RecordCommandRequest *
+       notebook__record_command_request__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   notebook__record_command_request__free_unpacked
+                     (Notebook__RecordCommandRequest *message,
+                      ProtobufCAllocator *allocator);
+/* Notebook__RecordCommandResponse methods */
+void   notebook__record_command_response__init
+                     (Notebook__RecordCommandResponse         *message);
+size_t notebook__record_command_response__get_packed_size
+                     (const Notebook__RecordCommandResponse   *message);
+size_t notebook__record_command_response__pack
+                     (const Notebook__RecordCommandResponse   *message,
+                      uint8_t             *out);
+size_t notebook__record_command_response__pack_to_buffer
+                     (const Notebook__RecordCommandResponse   *message,
+                      ProtobufCBuffer     *buffer);
+Notebook__RecordCommandResponse *
+       notebook__record_command_response__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   notebook__record_command_response__free_unpacked
+                     (Notebook__RecordCommandResponse *message,
+                      ProtobufCAllocator *allocator);
 /* Notebook__PipeRequest methods */
 void   notebook__pipe_request__init
                      (Notebook__PipeRequest         *message);
@@ -997,6 +1122,44 @@ Notebook__PipeResponse *
                       const uint8_t       *data);
 void   notebook__pipe_response__free_unpacked
                      (Notebook__PipeResponse *message,
+                      ProtobufCAllocator *allocator);
+/* Notebook__ExportPageResponse methods */
+void   notebook__export_page_response__init
+                     (Notebook__ExportPageResponse         *message);
+size_t notebook__export_page_response__get_packed_size
+                     (const Notebook__ExportPageResponse   *message);
+size_t notebook__export_page_response__pack
+                     (const Notebook__ExportPageResponse   *message,
+                      uint8_t             *out);
+size_t notebook__export_page_response__pack_to_buffer
+                     (const Notebook__ExportPageResponse   *message,
+                      ProtobufCBuffer     *buffer);
+Notebook__ExportPageResponse *
+       notebook__export_page_response__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   notebook__export_page_response__free_unpacked
+                     (Notebook__ExportPageResponse *message,
+                      ProtobufCAllocator *allocator);
+/* Notebook__ImportPageResponse methods */
+void   notebook__import_page_response__init
+                     (Notebook__ImportPageResponse         *message);
+size_t notebook__import_page_response__get_packed_size
+                     (const Notebook__ImportPageResponse   *message);
+size_t notebook__import_page_response__pack
+                     (const Notebook__ImportPageResponse   *message,
+                      uint8_t             *out);
+size_t notebook__import_page_response__pack_to_buffer
+                     (const Notebook__ImportPageResponse   *message,
+                      ProtobufCBuffer     *buffer);
+Notebook__ImportPageResponse *
+       notebook__import_page_response__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   notebook__import_page_response__free_unpacked
+                     (Notebook__ImportPageResponse *message,
                       ProtobufCAllocator *allocator);
 /* Notebook__SettingsResponse__EnvironmentEntry methods */
 void   notebook__settings_response__environment_entry__init
@@ -1155,11 +1318,23 @@ typedef void (*Notebook__ExecScriptRequest_Closure)
 typedef void (*Notebook__ExecScriptResponse_Closure)
                  (const Notebook__ExecScriptResponse *message,
                   void *closure_data);
+typedef void (*Notebook__RecordCommandRequest_Closure)
+                 (const Notebook__RecordCommandRequest *message,
+                  void *closure_data);
+typedef void (*Notebook__RecordCommandResponse_Closure)
+                 (const Notebook__RecordCommandResponse *message,
+                  void *closure_data);
 typedef void (*Notebook__PipeRequest_Closure)
                  (const Notebook__PipeRequest *message,
                   void *closure_data);
 typedef void (*Notebook__PipeResponse_Closure)
                  (const Notebook__PipeResponse *message,
+                  void *closure_data);
+typedef void (*Notebook__ExportPageResponse_Closure)
+                 (const Notebook__ExportPageResponse *message,
+                  void *closure_data);
+typedef void (*Notebook__ImportPageResponse_Closure)
+                 (const Notebook__ImportPageResponse *message,
                   void *closure_data);
 typedef void (*Notebook__SettingsResponse__EnvironmentEntry_Closure)
                  (const Notebook__SettingsResponse__EnvironmentEntry *message,
@@ -1205,8 +1380,12 @@ extern const ProtobufCMessageDescriptor notebook__exec_command_request__descript
 extern const ProtobufCMessageDescriptor notebook__exec_command_response__descriptor;
 extern const ProtobufCMessageDescriptor notebook__exec_script_request__descriptor;
 extern const ProtobufCMessageDescriptor notebook__exec_script_response__descriptor;
+extern const ProtobufCMessageDescriptor notebook__record_command_request__descriptor;
+extern const ProtobufCMessageDescriptor notebook__record_command_response__descriptor;
 extern const ProtobufCMessageDescriptor notebook__pipe_request__descriptor;
 extern const ProtobufCMessageDescriptor notebook__pipe_response__descriptor;
+extern const ProtobufCMessageDescriptor notebook__export_page_response__descriptor;
+extern const ProtobufCMessageDescriptor notebook__import_page_response__descriptor;
 extern const ProtobufCMessageDescriptor notebook__settings_response__descriptor;
 extern const ProtobufCMessageDescriptor notebook__settings_response__environment_entry__descriptor;
 extern const ProtobufCMessageDescriptor notebook__set_setting_request__descriptor;

@@ -93,4 +93,5 @@ private:
     QString currentServerUrl;
     QString activePageId;
     bool connected = false;
+    bool m_populatingPages = false;
 };

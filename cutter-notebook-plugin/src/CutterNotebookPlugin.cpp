@@ -358,7 +358,9 @@ QString CutterNotebookPlugin::selectedPageId() const
 void CutterNotebookPlugin::setActivePage(const QString &pageId)
 {
     activePageId = pageId;
-    populatePages(true);
+    if (!m_populatingPages) {
+        populatePages(true);
+    }
 }
 
 void CutterNotebookPlugin::updateComposeLabels(const QVariantMap &page)
@@ -549,6 +551,10 @@ bool CutterNotebookPlugin::populatePages(bool keepSelection)
     if (!pageListWidget) {
         return false;
     }
+    if (m_populatingPages) {
+        return false;
+    }
+    m_populatingPages = true;
 
     const QString previousSelection = keepSelection ? selectedPageId() : QString();
     int statusCode = 0;
@@ -558,6 +564,7 @@ bool CutterNotebookPlugin::populatePages(bool keepSelection)
         if (!error.isEmpty()) {
             QMessageBox::warning(nullptr, QStringLiteral("Notebook"), error);
         }
+        m_populatingPages = false;
         return false;
     }
 
@@ -565,6 +572,7 @@ bool CutterNotebookPlugin::populatePages(bool keepSelection)
     const QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
     if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
         QMessageBox::warning(nullptr, QStringLiteral("Notebook"), QStringLiteral("Invalid server response while listing pages."));
+        m_populatingPages = false;
         return false;
     }
 
@@ -573,6 +581,7 @@ bool CutterNotebookPlugin::populatePages(bool keepSelection)
         QMessageBox::warning(nullptr,
                              QStringLiteral("Notebook"),
                              obj.value(QStringLiteral("error")).toString(QStringLiteral("Failed to list pages.")));
+        m_populatingPages = false;
         return false;
     }
 
@@ -630,6 +639,7 @@ bool CutterNotebookPlugin::populatePages(bool keepSelection)
                                  .arg(pages.size())
                                  .arg(connected ? QStringLiteral("Connected") : QStringLiteral("Disconnected")));
     }
+    m_populatingPages = false;
     return true;
 }
 
@@ -871,6 +881,9 @@ void CutterNotebookPlugin::setupInterface(MainWindow *main)
     connect(btnSubmit, &QPushButton::clicked, this, &CutterNotebookPlugin::onSubmitEditor);
     connect(editorMode, &QComboBox::currentIndexChanged, this, [this]() { updateEditorPlaceholder(); });
     connect(pageListWidget, &QListWidget::currentTextChanged, this, [this]() {
+        if (m_populatingPages) {
+            return;
+        }
         const QString pageId = selectedPageId();
         if (!pageId.isEmpty()) {
             setActivePage(pageId);
@@ -1215,6 +1228,14 @@ void CutterNotebookPlugin::onSubmitEditor()
     const QString mode = editorMode->currentData().toString();
 
     if (mode == QLatin1String("exec-command")) {
+        /* Verify a file is open in Cutter before executing locally */
+        const QString currentFile = Core()->cmdRaw(QStringLiteral("o.")).trimmed();
+        if (currentFile.isEmpty() || currentFile.contains(QStringLiteral("No file open"), Qt::CaseInsensitive)) {
+            QMessageBox::warning(nullptr, QStringLiteral("Notebook"),
+                                 QStringLiteral("No file is open in Cutter. Open a binary first to execute commands locally."));
+            return;
+        }
+
         /* Run command locally via Cutter core, then record to server */
         const QString output = Core()->cmdRaw(content).trimmed();
 

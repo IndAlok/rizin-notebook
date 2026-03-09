@@ -516,8 +516,8 @@ func (c *Catalog) pageFilePath(pageID string) string {
 
 // ListPages scans the pages directory and returns metadata for all pages.
 func (c *Catalog) ListPages() ([]PageRow, error) {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
 	entries, err := os.ReadDir(c.pagesDir)
 	if err != nil {
@@ -553,8 +553,8 @@ func (c *Catalog) ListPages() ([]PageRow, error) {
 
 // GetPage returns the metadata for a single page, or nil if not found.
 func (c *Catalog) GetPage(pageID string) (*PageRow, error) {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
 	pdb, err := c.openPageUnlocked(pageID)
 	if err != nil {

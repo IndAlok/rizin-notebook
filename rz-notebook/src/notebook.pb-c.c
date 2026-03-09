@@ -862,6 +862,96 @@ void   notebook__exec_script_response__free_unpacked
   assert(message->base.descriptor == &notebook__exec_script_response__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
+void   notebook__record_command_request__init
+                     (Notebook__RecordCommandRequest         *message)
+{
+  static const Notebook__RecordCommandRequest init_value = NOTEBOOK__RECORD_COMMAND_REQUEST__INIT;
+  *message = init_value;
+}
+size_t notebook__record_command_request__get_packed_size
+                     (const Notebook__RecordCommandRequest *message)
+{
+  assert(message->base.descriptor == &notebook__record_command_request__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t notebook__record_command_request__pack
+                     (const Notebook__RecordCommandRequest *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &notebook__record_command_request__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t notebook__record_command_request__pack_to_buffer
+                     (const Notebook__RecordCommandRequest *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &notebook__record_command_request__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Notebook__RecordCommandRequest *
+       notebook__record_command_request__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Notebook__RecordCommandRequest *)
+     protobuf_c_message_unpack (&notebook__record_command_request__descriptor,
+                                allocator, len, data);
+}
+void   notebook__record_command_request__free_unpacked
+                     (Notebook__RecordCommandRequest *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &notebook__record_command_request__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   notebook__record_command_response__init
+                     (Notebook__RecordCommandResponse         *message)
+{
+  static const Notebook__RecordCommandResponse init_value = NOTEBOOK__RECORD_COMMAND_RESPONSE__INIT;
+  *message = init_value;
+}
+size_t notebook__record_command_response__get_packed_size
+                     (const Notebook__RecordCommandResponse *message)
+{
+  assert(message->base.descriptor == &notebook__record_command_response__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t notebook__record_command_response__pack
+                     (const Notebook__RecordCommandResponse *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &notebook__record_command_response__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t notebook__record_command_response__pack_to_buffer
+                     (const Notebook__RecordCommandResponse *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &notebook__record_command_response__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Notebook__RecordCommandResponse *
+       notebook__record_command_response__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Notebook__RecordCommandResponse *)
+     protobuf_c_message_unpack (&notebook__record_command_response__descriptor,
+                                allocator, len, data);
+}
+void   notebook__record_command_response__free_unpacked
+                     (Notebook__RecordCommandResponse *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &notebook__record_command_response__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
 void   notebook__pipe_request__init
                      (Notebook__PipeRequest         *message)
 {
@@ -950,6 +1040,96 @@ void   notebook__pipe_response__free_unpacked
   if(!message)
     return;
   assert(message->base.descriptor == &notebook__pipe_response__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   notebook__export_page_response__init
+                     (Notebook__ExportPageResponse         *message)
+{
+  static const Notebook__ExportPageResponse init_value = NOTEBOOK__EXPORT_PAGE_RESPONSE__INIT;
+  *message = init_value;
+}
+size_t notebook__export_page_response__get_packed_size
+                     (const Notebook__ExportPageResponse *message)
+{
+  assert(message->base.descriptor == &notebook__export_page_response__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t notebook__export_page_response__pack
+                     (const Notebook__ExportPageResponse *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &notebook__export_page_response__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t notebook__export_page_response__pack_to_buffer
+                     (const Notebook__ExportPageResponse *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &notebook__export_page_response__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Notebook__ExportPageResponse *
+       notebook__export_page_response__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Notebook__ExportPageResponse *)
+     protobuf_c_message_unpack (&notebook__export_page_response__descriptor,
+                                allocator, len, data);
+}
+void   notebook__export_page_response__free_unpacked
+                     (Notebook__ExportPageResponse *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &notebook__export_page_response__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   notebook__import_page_response__init
+                     (Notebook__ImportPageResponse         *message)
+{
+  static const Notebook__ImportPageResponse init_value = NOTEBOOK__IMPORT_PAGE_RESPONSE__INIT;
+  *message = init_value;
+}
+size_t notebook__import_page_response__get_packed_size
+                     (const Notebook__ImportPageResponse *message)
+{
+  assert(message->base.descriptor == &notebook__import_page_response__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t notebook__import_page_response__pack
+                     (const Notebook__ImportPageResponse *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &notebook__import_page_response__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t notebook__import_page_response__pack_to_buffer
+                     (const Notebook__ImportPageResponse *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &notebook__import_page_response__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Notebook__ImportPageResponse *
+       notebook__import_page_response__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Notebook__ImportPageResponse *)
+     protobuf_c_message_unpack (&notebook__import_page_response__descriptor,
+                                allocator, len, data);
+}
+void   notebook__import_page_response__free_unpacked
+                     (Notebook__ImportPageResponse *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &notebook__import_page_response__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
 void   notebook__settings_response__environment_entry__init
@@ -1286,7 +1466,7 @@ const ProtobufCMessageDescriptor notebook__cell__descriptor =
   (ProtobufCMessageInit) notebook__cell__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCFieldDescriptor notebook__page__field_descriptors[8] =
+static const ProtobufCFieldDescriptor notebook__page__field_descriptors[9] =
 {
   {
     "id",
@@ -1384,9 +1564,22 @@ static const ProtobufCFieldDescriptor notebook__page__field_descriptors[8] =
     0,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "binary_hash",
+    9,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Notebook__Page, binary_hash),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned notebook__page__field_indices_by_name[] = {
   3,   /* field[3] = binary */
+  8,   /* field[8] = binary_hash */
   7,   /* field[7] = cells */
   5,   /* field[5] = created */
   2,   /* field[2] = filename */
@@ -1398,7 +1591,7 @@ static const unsigned notebook__page__field_indices_by_name[] = {
 static const ProtobufCIntRange notebook__page__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 8 }
+  { 0, 9 }
 };
 const ProtobufCMessageDescriptor notebook__page__descriptor =
 {
@@ -1408,7 +1601,7 @@ const ProtobufCMessageDescriptor notebook__page__descriptor =
   "Notebook__Page",
   "notebook",
   sizeof(Notebook__Page),
-  8,
+  9,
   notebook__page__field_descriptors,
   notebook__page__field_indices_by_name,
   1,  notebook__page__number_ranges,
@@ -2347,6 +2540,134 @@ const ProtobufCMessageDescriptor notebook__exec_script_response__descriptor =
   (ProtobufCMessageInit) notebook__exec_script_response__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
+static const ProtobufCFieldDescriptor notebook__record_command_request__field_descriptors[3] =
+{
+  {
+    "page_id",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Notebook__RecordCommandRequest, page_id),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "command",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Notebook__RecordCommandRequest, command),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "output",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_BYTES,
+    0,   /* quantifier_offset */
+    offsetof(Notebook__RecordCommandRequest, output),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned notebook__record_command_request__field_indices_by_name[] = {
+  1,   /* field[1] = command */
+  2,   /* field[2] = output */
+  0,   /* field[0] = page_id */
+};
+static const ProtobufCIntRange notebook__record_command_request__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 3 }
+};
+const ProtobufCMessageDescriptor notebook__record_command_request__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "notebook.RecordCommandRequest",
+  "RecordCommandRequest",
+  "Notebook__RecordCommandRequest",
+  "notebook",
+  sizeof(Notebook__RecordCommandRequest),
+  3,
+  notebook__record_command_request__field_descriptors,
+  notebook__record_command_request__field_indices_by_name,
+  1,  notebook__record_command_request__number_ranges,
+  (ProtobufCMessageInit) notebook__record_command_request__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor notebook__record_command_response__field_descriptors[3] =
+{
+  {
+    "cell",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(Notebook__RecordCommandResponse, cell),
+    &notebook__cell__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "success",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_BOOL,
+    0,   /* quantifier_offset */
+    offsetof(Notebook__RecordCommandResponse, success),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "error",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Notebook__RecordCommandResponse, error),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned notebook__record_command_response__field_indices_by_name[] = {
+  0,   /* field[0] = cell */
+  2,   /* field[2] = error */
+  1,   /* field[1] = success */
+};
+static const ProtobufCIntRange notebook__record_command_response__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 3 }
+};
+const ProtobufCMessageDescriptor notebook__record_command_response__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "notebook.RecordCommandResponse",
+  "RecordCommandResponse",
+  "Notebook__RecordCommandResponse",
+  "notebook",
+  sizeof(Notebook__RecordCommandResponse),
+  3,
+  notebook__record_command_response__field_descriptors,
+  notebook__record_command_response__field_indices_by_name,
+  1,  notebook__record_command_response__number_ranges,
+  (ProtobufCMessageInit) notebook__record_command_response__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
 static const ProtobufCFieldDescriptor notebook__pipe_request__field_descriptors[1] =
 {
   {
@@ -2434,6 +2755,95 @@ const ProtobufCMessageDescriptor notebook__pipe_response__descriptor =
   notebook__pipe_response__field_indices_by_name,
   1,  notebook__pipe_response__number_ranges,
   (ProtobufCMessageInit) notebook__pipe_response__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor notebook__export_page_response__field_descriptors[2] =
+{
+  {
+    "data",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_BYTES,
+    0,   /* quantifier_offset */
+    offsetof(Notebook__ExportPageResponse, data),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "filename",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Notebook__ExportPageResponse, filename),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned notebook__export_page_response__field_indices_by_name[] = {
+  0,   /* field[0] = data */
+  1,   /* field[1] = filename */
+};
+static const ProtobufCIntRange notebook__export_page_response__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 2 }
+};
+const ProtobufCMessageDescriptor notebook__export_page_response__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "notebook.ExportPageResponse",
+  "ExportPageResponse",
+  "Notebook__ExportPageResponse",
+  "notebook",
+  sizeof(Notebook__ExportPageResponse),
+  2,
+  notebook__export_page_response__field_descriptors,
+  notebook__export_page_response__field_indices_by_name,
+  1,  notebook__export_page_response__number_ranges,
+  (ProtobufCMessageInit) notebook__export_page_response__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor notebook__import_page_response__field_descriptors[1] =
+{
+  {
+    "page",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(Notebook__ImportPageResponse, page),
+    &notebook__page__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned notebook__import_page_response__field_indices_by_name[] = {
+  0,   /* field[0] = page */
+};
+static const ProtobufCIntRange notebook__import_page_response__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 1 }
+};
+const ProtobufCMessageDescriptor notebook__import_page_response__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "notebook.ImportPageResponse",
+  "ImportPageResponse",
+  "Notebook__ImportPageResponse",
+  "notebook",
+  sizeof(Notebook__ImportPageResponse),
+  1,
+  notebook__import_page_response__field_descriptors,
+  notebook__import_page_response__field_indices_by_name,
+  1,  notebook__import_page_response__number_ranges,
+  (ProtobufCMessageInit) notebook__import_page_response__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
 static const ProtobufCFieldDescriptor notebook__settings_response__environment_entry__field_descriptors[2] =

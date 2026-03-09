@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	pb "github.com/rizinorg/rizin-notebook/pb"
@@ -1092,16 +1093,35 @@ func apiImportPage(c *gin.Context) {
 }
 
 func apiJSONImportPage(c *gin.Context) {
-	file, _, err := c.Request.FormFile("file")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file upload required: " + err.Error()})
-		return
-	}
-	defer file.Close()
+	var data []byte
 
-	data, err := io.ReadAll(file)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file: " + err.Error()})
+	ct := c.ContentType()
+	if strings.Contains(ct, "multipart/form-data") {
+		// multipart upload: field name "file"
+		file, _, err := c.Request.FormFile("file")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "file upload required: " + err.Error()})
+			return
+		}
+		defer file.Close()
+		var err2 error
+		data, err2 = io.ReadAll(file)
+		if err2 != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file: " + err2.Error()})
+			return
+		}
+	} else {
+		// raw body (application/octet-stream or Content-Type: application/x-sqlite3, etc.)
+		var err error
+		data, err = io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body: " + err.Error()})
+			return
+		}
+	}
+
+	if len(data) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "empty file data"})
 		return
 	}
 

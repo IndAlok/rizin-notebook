@@ -31,6 +31,56 @@
 #include <string.h>
 #include <stdlib.h>
 
+#if defined(_WIN32)
+#  include <windows.h>
+#  include <wincrypt.h>
+#  pragma comment(lib, "crypt32.lib")
+   // Compute hex-encoded SHA-256 of buf[0..len).  Returns malloc'd string or NULL.
+   static char *nb_sha256_hex(const uint8_t *buf, size_t len) {
+       HCRYPTPROV hProv = 0;
+       HCRYPTHASH hHash = 0;
+       char *out = NULL;
+       if (!CryptAcquireContextW(&hProv, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT))
+           return NULL;
+       if (!CryptCreateHash(hProv, CALG_SHA_256, 0, 0, &hHash))
+           goto done;
+       if (!CryptHashData(hHash, buf, (DWORD)len, 0))
+           goto done;
+       DWORD hashLen = 32;
+       uint8_t digest[32];
+       if (!CryptGetHashParam(hHash, HP_HASHVAL, digest, &hashLen, 0))
+           goto done;
+       out = (char *)malloc(65);
+       if (out) {
+           static const char hex[] = "0123456789abcdef";
+           for (int i = 0; i < 32; i++) {
+               out[i * 2]     = hex[digest[i] >> 4];
+               out[i * 2 + 1] = hex[digest[i] & 0xf];
+           }
+           out[64] = '\0';
+       }
+done:
+       if (hHash) CryptDestroyHash(hHash);
+       if (hProv) CryptReleaseContext(hProv, 0);
+       return out;
+   }
+#else
+#  include <openssl/sha.h>
+   static char *nb_sha256_hex(const uint8_t *buf, size_t len) {
+       unsigned char digest[32];
+       SHA256(buf, len, digest);
+       char *out = (char *)malloc(65);
+       if (!out) return NULL;
+       static const char hex[] = "0123456789abcdef";
+       for (int i = 0; i < 32; i++) {
+           out[i * 2]     = hex[digest[i] >> 4];
+           out[i * 2 + 1] = hex[digest[i] & 0xf];
+       }
+       out[64] = '\0';
+       return out;
+   }
+#endif
+
 // ── Logging ─────────────────────────────────────────────────────────────
 
 #define NB_LOG_ERR(fmt, ...)  RZ_LOG_ERROR("[notebook] " fmt "\n", ##__VA_ARGS__)
@@ -363,23 +413,14 @@ static RzCmdStatus cmd_nb_open(RzCore *core, int argc, const char **argv) {
 			size_t file_len = 0;
 			uint8_t *file_data = (uint8_t *)rz_file_slurp(cur_file, &file_len);
 			if (file_data && file_len > 0) {
-				RzHash *hash_ctx = rz_hash_new();
-				if (hash_ctx) {
-					RzHashCfg *cfg = rz_hash_cfg_new(hash_ctx);
-					if (cfg) {
-						char *cur_hash = rz_hash_cfg_calculate_small_block_string(
-							cfg, "sha256", file_data, file_len, NULL, false);
-						if (cur_hash) {
-							if (strcmp(cur_hash, gp->page->binary_hash) != 0) {
-								rz_cons_printf("Warning: binary hash mismatch.\n");
-								rz_cons_printf("  Page:    %s\n", gp->page->binary_hash);
-								rz_cons_printf("  Current: %s\n", cur_hash);
-							}
-							free(cur_hash);
-						}
-						rz_hash_cfg_free(cfg);
+				char *cur_hash = nb_sha256_hex(file_data, file_len);
+				if (cur_hash) {
+					if (strcmp(cur_hash, gp->page->binary_hash) != 0) {
+						rz_cons_printf("Warning: binary hash mismatch.\n");
+						rz_cons_printf("  Page:    %s\n", gp->page->binary_hash);
+						rz_cons_printf("  Current: %s\n", cur_hash);
 					}
-					rz_hash_free(hash_ctx);
+					free(cur_hash);
 				}
 			}
 			free(file_data);
@@ -513,6 +554,13 @@ static RzCmdStatus cmd_nb_exec(RzCore *core, int argc, const char **argv) {
 	if (argc < 2) {
 		rz_cons_println("Usage: NBx <command>");
 		return RZ_CMD_STATUS_WRONG_ARGS;
+	}
+
+	// Verify a file is open in the current session.
+	const char *cur_file = nb_current_filename(core);
+	if (!cur_file) {
+		rz_cons_println("No file is open in this session. Open a binary first (e.g. 'rizin /path/to/binary').");
+		return RZ_CMD_STATUS_ERROR;
 	}
 
 	const char *command = argv[1];
