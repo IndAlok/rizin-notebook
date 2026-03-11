@@ -11,6 +11,8 @@
     html, body { width: 100%; height: 100%; margin: 0 }
     .button-edit { width: 75px ! important; margin-top: 9px; margin-right: 9px; }
   </style>
+  <script>window.NOTEBOOK_KB={{ keybindings }};</script>
+  <script src="{{ .root }}static/shortcuts.js"></script>
 </head>
 <body>
   {{ if .message }}
@@ -25,15 +27,20 @@
     </div>
     <div class="form-group">
       <button class="btn btn-primary" type="submit">Exec</button>
-      <button class="btn" type="button" onclick="window.parent.postMessage({type:'iframe-remove'},'*')">Cancel</button>
+      <button class="btn" type="button" id="cancel-console" onclick="window.parent.postMessage({type:'iframe-remove'},'*')">Cancel</button>
       <span style="color:#999;font-size:12px;margin-left:8px;">Ctrl+Enter to execute</span>
     </div>
   </form>
   <script>
     var createdCellUnique = {{ if .cellUnique }}"{{ .cellUnique }}"{{ else }}""{{ end }};
     var input = document.getElementById('cmdinput');
+    NotebookShortcuts.annotate(document.getElementById('cancel-console'), 'cancel');
+    NotebookShortcuts.bind([
+      { action: 'cancel', allowInInputs: true, handler: function() { document.getElementById('cancel-console').click(); } },
+      { action: 'execute', allowInInputs: true, handler: function() { document.getElementById('cmdform').submit(); } }
+    ]);
     input.addEventListener('keydown', function(e) {
-      if (e.ctrlKey && e.key === 'Enter') document.getElementById('cmdform').submit();
+      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); document.getElementById('cmdform').submit(); }
     });
     document.getElementById('cmdform').addEventListener('submit', function(e) {
       if (!input.value.trim()) { e.preventDefault(); window.parent.postMessage({type:'iframe-remove'},'*'); }

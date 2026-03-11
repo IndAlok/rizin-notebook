@@ -14,6 +14,8 @@
         .icon-height { height: 20px; }
         iframe { border: 0px; width: 100%; height: 100% }
     </style>
+      <script>window.NOTEBOOK_KB={{ keybindings }};</script>
+      <script src="{{ $root }}static/shortcuts.js"></script>
     <script type="text/javascript">
 {{ if eq .action "environment" }}
       function confirm_delete(event) {
@@ -30,9 +32,46 @@
           event.preventDefault();
         }
       }
+{{ else if eq .action "keybinding" }}
+      function verify(event) {
+        var value = document.getElementById('value').value.trim();
+        if (value.length < 1) {
+          alert("Shortcut combo cannot be empty.");
+          event.preventDefault();
+        }
+      }
+      function startRecording() {
+        var btn = document.getElementById('record-btn');
+        var input = document.getElementById('value');
+        btn.textContent = 'Press a key combo...';
+        btn.classList.add('btn-error');
+        input.value = '';
+        input.placeholder = 'Press keys now...';
+        NotebookShortcuts.record(function(combo) {
+          input.value = combo;
+          btn.textContent = 'Record';
+          btn.classList.remove('btn-error');
+          input.placeholder = 'e.g. alt+n, ctrl+s, ctrl+enter';
+        });
+      }
 {{ else }}
       function verify(event) {}
 {{ end }}
+      document.addEventListener('DOMContentLoaded', function() {
+        NotebookShortcuts.annotate(document.getElementById('nav-home'), 'cancel');
+        NotebookShortcuts.annotate(document.getElementById('nav-about'), 'about');
+        NotebookShortcuts.annotate(document.getElementById('save-settings'), 'save');
+        NotebookShortcuts.bind([
+          { action: 'about', handler: function() { document.getElementById('nav-about').click(); } },
+          { action: 'new_page', handler: function() { window.location.href = '{{ $root }}new'; } },
+          { action: 'save', allowInInputs: true, handler: function() { document.getElementById('save-settings').click(); } },
+          { action: 'cancel', handler: function() { document.getElementById('nav-home').click(); } }
+        ]);
+        var labels = document.querySelectorAll('[data-shortcut-label]');
+        for (var i = 0; i < labels.length; i++) {
+          labels[i].textContent = NotebookShortcuts.formatCombo(labels[i].getAttribute('data-shortcut-label'));
+        }
+      });
     </script>
   </head>
 <body>
@@ -43,7 +82,11 @@
         <a href="{{ $root }}" class="navbar-brand mr-10">Rizin Notebook</a>
       </section>
       <section class="navbar-section">
+        <a href="{{ $root }}about" class="btn" id="nav-about">About</a>
+        &nbsp;
         Edit Settings
+        &nbsp;
+        <a href="{{ $root }}settings" class="btn btn-primary" id="nav-home">Go Back</a>
       </section>
     </header>
     <section class="container">
@@ -59,10 +102,20 @@
               <input type="text" class="form-input" name="key" id="key" value="{{ .editkey }}" placeholder="Environment Variable Name"/>
               <label class="form-label" for="value">Value</label>
               <input type="text" class="form-input" name="value" id="value" value="{{ if gt $eklen 0 }}{{ index .data .editkey }}{{ end }}" placeholder="Insert a variable value (or leave it empty)"/>
+              {{ else if eq .action "keybinding" }}
+              <input type="hidden" name="editkey" value="{{ .editkey }}" />
+              <input type="hidden" name="subaction" id="subaction" value="save" />
+              <label class="form-label">Action: <strong>{{ .label }}</strong></label>
+              <label class="form-label" for="value">Keyboard Shortcut</label>
+              <div class="input-group">
+                <input type="text" class="form-input" name="value" id="value" value="{{ .combo }}" placeholder="e.g. alt+n, ctrl+s, ctrl+enter" />
+                <button class="btn input-group-btn" type="button" id="record-btn" onclick="startRecording()">Record</button>
+              </div>
+              <p class="form-input-hint">Default: <code data-shortcut-label="{{ .default_combo }}"></code> &mdash; Type a combo like <code>alt+n</code> or click Record and press keys.</p>
               {{ end }}
             </div>
             <div class="form-group">
-              <button class="btn btn-primary" type="submit">{{ if lt $eklen 1 }}Create{{ else }}Save{{ end }}</button>
+              <button class="btn btn-primary" type="submit" id="save-settings">{{ if eq .action "keybinding" }}Save{{ else if lt $eklen 1 }}Create{{ else }}Save{{ end }}</button>
               {{ if eq .action "environment" }}
               {{ if gt $eklen 0 }}
               <a class="btn" href="{{ $root }}settings">Cancel</a>
@@ -70,6 +123,9 @@
               {{ else }}
               <a class="btn" href="{{ $root }}settings">Cancel</a>
               {{ end }}
+              {{ else if eq .action "keybinding" }}
+              <a class="btn" href="{{ $root }}settings">Cancel</a>
+              <button class="btn float-right" type="button" onclick="document.getElementById('subaction').value='reset';this.form.submit()">Reset to Default</button>
               {{ else }}
               <button class="btn float-right" type="submit">Cancel</button>
               {{ end }}

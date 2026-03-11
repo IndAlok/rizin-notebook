@@ -26,6 +26,8 @@
         }
         .container, .columns, .column { overflow-x: hidden; }
     </style>
+    <script>window.NOTEBOOK_KB={{ keybindings }};</script>
+    <script src="{{ $root }}static/shortcuts.js"></script>
     <script>
             function confirmDelete(e, title) {
         e.preventDefault();
@@ -60,6 +62,16 @@
           .catch(function(err) { alert('Import error: ' + (err.message || err)); });
         input.value = '';
       }
+      document.addEventListener('DOMContentLoaded', function() {
+        NotebookShortcuts.annotate(document.getElementById('nav-settings'), 'settings');
+        NotebookShortcuts.annotate(document.getElementById('nav-about'), 'about');
+        NotebookShortcuts.annotate(document.getElementById('nav-new-page'), 'new_page');
+        NotebookShortcuts.bind([
+          { action: 'about', handler: function() { document.getElementById('nav-about').click(); } },
+          { action: 'new_page', handler: function() { document.getElementById('nav-new-page').click(); } },
+          { action: 'settings', handler: function() { document.getElementById('nav-settings').click(); } }
+        ]);
+      });
     </script>
 </head>
 <body>
@@ -70,11 +82,11 @@
                 <a href="{{ $root }}" class="navbar-brand mr-10">Rizin Notebook</a>
             </section>
             <section class="navbar-section">
-                <a href="{{ $root }}settings" class="btn">Settings</a>
+              <a href="{{ $root }}settings" class="btn" id="nav-settings">Settings</a>
                 &nbsp;
-                <a href="{{ $root }}about" class="btn">About</a>
+              <a href="{{ $root }}about" class="btn" id="nav-about">About</a>
                 &nbsp;
-                <a href="{{ $root }}new" class="btn btn-primary">New Page</a>
+              <a href="{{ $root }}new" class="btn btn-primary" id="nav-new-page">New Page</a>
                 &nbsp;
                 <label class="btn" style="cursor: pointer;">Import .rznb
                     <input type="file" accept=".rznb" style="display:none" onchange="importRznb(this)">

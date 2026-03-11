@@ -12,14 +12,16 @@
     .position-right { position: absolute; right: 0px; z-index: 99999; }
     .button-edit { width: 75px ! important; margin-top: 9px; margin-right: 9px; }
   </style>
+  <script>window.NOTEBOOK_KB={{ keybindings }};</script>
+  <script src="{{ .root }}static/shortcuts.js"></script>
 </head>
 <body onload="editor()">
   <div style="margin-top: 15px; height: 100%;">
     <form action="{{ .root }}markdown/save{{ .path }}" method="POST">
       <div class="position-right">
-        <button class="btn btn-action button-edit" type="submit"><i class="icon icon-share">Code</i> Save</button>
+        <button class="btn btn-action button-edit" type="submit" id="save-markdown"><i class="icon icon-share">Code</i> Save</button>
         <button class="btn btn-action button-edit" type="button" onclick="if(confirm('Delete this cell?')){fetch('{{ .root }}markdown/delete{{ .path }}',{redirect:'follow'}).then(function(){window.parent.postMessage({type:'iframe-remove'},'*')})}"><i class="icon icon-cross">Code</i> Delete</button>
-        <a class="btn btn-action button-edit" href="{{ .root }}markdown/view{{ .path }}"><i class="icon icon-edit">Code</i> Cancel</a>
+        <a class="btn btn-action button-edit" href="{{ .root }}markdown/view{{ .path }}" id="cancel-markdown"><i class="icon icon-edit">Code</i> Cancel</a>
       </div>
       <div class="form-group">
         <textarea class="form-input" id="input-body" name="markdown" placeholder="Content" cols="80" rows="24">{{printf "%s" .raw}}</textarea>
@@ -44,6 +46,12 @@
       var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
       if (window.parent !== window) window.parent.postMessage({type:'iframe-resize',height:h},'*');
     }, 100);
+    NotebookShortcuts.annotate(document.getElementById('save-markdown'), 'save');
+    NotebookShortcuts.annotate(document.getElementById('cancel-markdown'), 'cancel');
+    NotebookShortcuts.bind([
+      { action: 'save', allowInInputs: true, handler: function() { document.getElementById('save-markdown').click(); } },
+      { action: 'cancel', allowInInputs: true, handler: function() { document.getElementById('cancel-markdown').click(); } }
+    ]);
   };
   </script>
 </body>

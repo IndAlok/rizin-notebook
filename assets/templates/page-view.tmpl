@@ -46,7 +46,10 @@
       .modal-entry-text { min-width: 200px; display: inline-block; }
       .modal-searchbar { width: calc(100% - 36px); }
       .modal-close { float: right; width: 32px; }
+      .shortcut-hint { opacity: .7; font-size: 11px; margin-left: 6px; }
     </style>
+    <script>window.NOTEBOOK_KB={{ keybindings }};</script>
+    <script src="{{ $root }}static/shortcuts.js"></script>
     <script>
       function resizeIframe(obj, padding) {
         try {
@@ -181,6 +184,10 @@
           var el = document.getElementById('cell-' + cellId);
           if (el) el.remove();
         });
+      }
+      function isCommandHelpOpen() {
+        var modal = document.getElementById('command-help');
+        return modal && modal.className.indexOf(' active') >= 0;
       }
       function newmd() {
         var body = document.getElementById("page-body");
@@ -349,6 +356,24 @@
         }
       }
 {{ end }}
+      document.addEventListener('DOMContentLoaded', function() {
+        NotebookShortcuts.annotate(document.getElementById('nav-about'), 'about');
+        NotebookShortcuts.annotate(document.getElementById('nav-settings'), 'settings');
+        NotebookShortcuts.annotate(document.getElementById('nav-new-page'), 'new_page');
+        NotebookShortcuts.annotate(document.getElementById('toggle-pipe'), 'toggle_pipe');
+        {{ if $pipe }}NotebookShortcuts.annotate(document.getElementById('open-command-line'), 'new_command');{{ end }}
+        NotebookShortcuts.annotate(document.getElementById('open-markdown'), 'new_markdown');
+        NotebookShortcuts.bind([
+          { action: 'about', handler: function() { document.getElementById('nav-about').click(); } },
+          { action: 'new_page', handler: function() { document.getElementById('nav-new-page').click(); } },
+          { action: 'settings', handler: function() { document.getElementById('nav-settings').click(); } },
+          { action: 'toggle_pipe', handler: function() { document.getElementById('toggle-pipe').click(); } },
+          { action: 'new_markdown', when: function() { return !isCommandHelpOpen(); }, handler: function() { newmd(); } },
+          { action: 'new_script', when: function() { return !isCommandHelpOpen(); }, handler: function() { newsc(); } },
+          { action: 'new_command', when: function() { return !isCommandHelpOpen() && {{ if $pipe }}true{{ else }}false{{ end }}; }, handler: function() { newcm(); } },
+          { action: 'cancel', when: function() { return isCommandHelpOpen(); }, handler: function() { closeCmdHelp(); } }
+        ]);
+      });
     </script>
   </head>
 <body>
@@ -361,11 +386,17 @@
       <section class="navbar-section">
         <h4 class="title-margin">{{ $page.title }}</h4>
         &nbsp;
+        <a href="{{ $root }}about" class="btn" id="nav-about">About</a>
+        &nbsp;
+        <a href="{{ $root }}settings" class="btn" id="nav-settings">Settings</a>
+        &nbsp;
+        <a href="{{ $root }}new" class="btn" id="nav-new-page">New Page</a>
+        &nbsp;
         {{ if not $page.hasBinary }}
         <a href="{{ $root }}edit/{{ $page.unique }}" class="btn btn-error">Attach Binary</a>
         &nbsp;
         {{ end }}
-        <a href="{{ $root }}pipe/{{ if $pipe }}close{{ else }}open{{ end }}/{{ $page.unique }}" class="btn{{ if $pipe }} pipe{{ end }}">
+        <a href="{{ $root }}pipe/{{ if $pipe }}close{{ else }}open{{ end }}/{{ $page.unique }}" class="btn{{ if $pipe }} pipe{{ end }}" id="toggle-pipe">
           {{ if $pipe }}Close Pipe{{ else }}Open Pipe{{ end }}
         </a>
         &nbsp;
@@ -419,12 +450,12 @@
 {{ end }}
 {{ end }}
           <div class="input-group spacing-top" style="margin-top: 10px;">
-            <a class="btn" href="#" onclick="newmd()"><i class="icon icon-message">Markdown</i> Markdown</a>
+            <a class="btn" href="#" onclick="newmd()" id="open-markdown"><i class="icon icon-message">Markdown</i> Markdown</a>
             &nbsp;
-            <a class="btn" href="#" onclick="newsc()"><i class="icon icon-share">Script</i> Script</a>
+            <a class="btn" href="#" onclick="newsc()" id="open-script"><i class="icon icon-share">Script</i> Script</a>
 {{ if $pipe }}
             &nbsp;
-            <a class="btn" href="#" onclick="newcm()"><i class="icon icon-resize-horiz">Command Line</i> Command Line</a>
+            <a class="btn" href="#" onclick="newcm()" id="open-command-line"><i class="icon icon-resize-horiz">Command Line</i> Command Line</a>
             &nbsp;
             <a class="btn" href="#" onclick="openCmdHelp()"><i class="icon icon-search">Help</i> Help</a>
 {{ end }}

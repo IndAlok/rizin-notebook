@@ -18,6 +18,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
+#include <QKeySequence>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
@@ -28,8 +29,10 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
+#include <QShortcut>
 #include <QSplitter>
 #include <QTabWidget>
+#include <QToolTip>
 #include <QUrl>
 #include <QVariantMap>
 #include <QVBoxLayout>
@@ -762,7 +765,7 @@ void CutterNotebookPlugin::setupInterface(MainWindow *main)
     ensureAction("Spawn Server", "NotebookSpawnAction", &CutterNotebookPlugin::onSpawn);
     ensureAction("Server Status", "NotebookServerStatusAction", &CutterNotebookPlugin::onServerStatus);
     ensureAction("List Pages", "NotebookListPagesAction", &CutterNotebookPlugin::onListPages);
-    ensureAction("New Page...", "NotebookNewPageAction", &CutterNotebookPlugin::onNewPage);
+    QAction *newPageAction = ensureAction("New Page...", "NotebookNewPageAction", &CutterNotebookPlugin::onNewPage);
     ensureAction("Delete Page", "NotebookDeletePageAction", &CutterNotebookPlugin::onDeletePage);
     ensureAction("Attach Binary...", "NotebookAttachBinaryAction", &CutterNotebookPlugin::onAttachBinary);
     ensureAction("Export Page...", "NotebookExportPageAction", &CutterNotebookPlugin::onExportPage);
@@ -779,8 +782,13 @@ void CutterNotebookPlugin::setupInterface(MainWindow *main)
         nbMenu->addSeparator();
     }
 
-    ensureAction("Open in Browser", "NotebookOpenBrowserAction", &CutterNotebookPlugin::onOpenBrowser);
+    QAction *browserAction = ensureAction("Open in Browser", "NotebookOpenBrowserAction", &CutterNotebookPlugin::onOpenBrowser);
     ensureAction("Set Server URL...", "NotebookSetUrlAction", &CutterNotebookPlugin::onSetUrl);
+
+    newPageAction->setShortcut(QKeySequence());
+    newPageAction->setShortcutContext(Qt::ApplicationShortcut);
+    browserAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+B")));
+    browserAction->setShortcutContext(Qt::ApplicationShortcut);
 
     dockWidget = new QDockWidget("Notebook", main);
     dockWidget->setObjectName("NotebookDock");
@@ -885,6 +893,79 @@ void CutterNotebookPlugin::setupInterface(MainWindow *main)
     composeLayout->addLayout(composeButtons);
     dockTabs->addTab(composeTab, QStringLiteral("Compose"));
 
+    btnNew->setToolTip(QStringLiteral("New Page (%1)").arg(QKeySequence(QStringLiteral("Ctrl+N")).toString(QKeySequence::NativeText)));
+    btnOpenPipe->setToolTip(QStringLiteral("Open Pipe (%1)").arg(QKeySequence(QStringLiteral("Ctrl+O")).toString(QKeySequence::NativeText)));
+    btnClosePipe->setToolTip(QStringLiteral("Close Pipe (%1)").arg(QKeySequence(QStringLiteral("Ctrl+O")).toString(QKeySequence::NativeText)));
+    btnBrowser->setToolTip(QStringLiteral("Open Browser (%1)").arg(QKeySequence(QStringLiteral("Ctrl+B")).toString(QKeySequence::NativeText)));
+    btnSubmit->setToolTip(QStringLiteral("Submit current content (%1)").arg(QKeySequence(Qt::CTRL | Qt::Key_Return).toString(QKeySequence::NativeText)));
+    editorMode->setToolTip(QStringLiteral("Compose shortcuts: Ctrl+E = Execute Command, Ctrl+M = Markdown"));
+
+    auto bindShortcut = [this, main](const QString &sequence, auto handler) {
+        auto *shortcut = new QShortcut(QKeySequence(sequence), main);
+        shortcut->setContext(Qt::ApplicationShortcut);
+        shortcut->setAutoRepeat(false);
+        connect(shortcut, &QShortcut::activated, this, handler);
+        return shortcut;
+    };
+
+    // Ctrl+N: New Page.
+    // Connect to BOTH activated AND activatedAmbiguously so it fires even when another
+    // part of Cutter also claims Ctrl+N (Qt would otherwise fire neither signal).
+    {
+        auto *ctrlNShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_N), main);
+        ctrlNShortcut->setContext(Qt::ApplicationShortcut);
+        ctrlNShortcut->setAutoRepeat(false);
+        auto ctrlNHandler = [this]() {
+            ensureDockVisible();
+            onNewPage();
+        };
+        connect(ctrlNShortcut, &QShortcut::activated,            this, ctrlNHandler);
+        connect(ctrlNShortcut, &QShortcut::activatedAmbiguously, this, ctrlNHandler);
+    }
+    bindShortcut(QStringLiteral("Ctrl+O"), [this]() {
+        ensureDockVisible();
+        const QString pageId = selectedPageId().isEmpty() ? activePageId : selectedPageId();
+        if (pageId.isEmpty()) {
+            QMessageBox::information(nullptr, QStringLiteral("Notebook"), QStringLiteral("Select or create a page first."));
+            return;
+        }
+        if (pipeLabel && pipeLabel->text().contains(QStringLiteral("open"), Qt::CaseInsensitive)) {
+            onClosePipe();
+            return;
+        }
+        onOpenPipe();
+    });
+    bindShortcut(QStringLiteral("Ctrl+E"), [this]() {
+        ensureDockVisible();
+        if (dockTabs) {
+            dockTabs->setCurrentIndex(1);
+        }
+        if (editorMode) {
+            int index = editorMode->findData(QStringLiteral("exec-command"));
+            if (index >= 0) {
+                editorMode->setCurrentIndex(index);
+            }
+        }
+        if (editor) {
+            editor->setFocus();
+        }
+    });
+    bindShortcut(QStringLiteral("Ctrl+M"), [this]() {
+        ensureDockVisible();
+        if (dockTabs) {
+            dockTabs->setCurrentIndex(1);
+        }
+        if (editorMode) {
+            int index = editorMode->findData(QStringLiteral("markdown"));
+            if (index >= 0) {
+                editorMode->setCurrentIndex(index);
+            }
+        }
+        if (editor) {
+            editor->setFocus();
+        }
+    });
+
     /* ── Connections ─────────────────────────────────────────────── */
     connect(btnConnect, &QPushButton::clicked, this, &CutterNotebookPlugin::onConnect);
     connect(btnSpawn, &QPushButton::clicked, this, &CutterNotebookPlugin::onSpawn);
@@ -909,6 +990,21 @@ void CutterNotebookPlugin::setupInterface(MainWindow *main)
         }
         editor->clear();
         editor->setFocus();
+    });
+
+    /* Ctrl+Enter submits from the compose tab (works even inside the editor) */
+    auto *submitShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Return), composeTab);
+    submitShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(submitShortcut, &QShortcut::activated, this, &CutterNotebookPlugin::onSubmitEditor);
+
+    /* Escape clears the compose editor */
+    auto *cancelShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), composeTab);
+    cancelShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(cancelShortcut, &QShortcut::activated, this, [this]() {
+        if (editor) {
+            editor->clear();
+            editor->setFocus();
+        }
     });
     connect(editorMode, &QComboBox::currentIndexChanged, this, [this]() { updateEditorPlaceholder(); });
     connect(pageListWidget, &QListWidget::currentTextChanged, this, [this]() {
@@ -1083,7 +1179,7 @@ void CutterNotebookPlugin::onNewPage()
 {
     ensureDockVisible();
     bool ok = false;
-    QString title = QInputDialog::getText(nullptr, "New Notebook Page",
+    QString title = QInputDialog::getText(mainWindow, "New Notebook Page",
                                           "Page title:", QLineEdit::Normal,
                                           QString(), &ok);
     if (!ok || title.isEmpty()) {

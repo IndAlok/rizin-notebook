@@ -18,15 +18,26 @@
         .spacer-12px { width: 12px; display: inline-block; }
         .col-btn { width: 3.333%; }
     </style>
-    <script type="text/javascript">
-      function keycombo(elem, keys) {
-        keys = keys.split(',');
-        if (keys.length === 1 && keys[0].length < 1) {
-          keys = [];
-        }
-        elem.textContent = keys.length > 0 ? keys.join(' + ') : "Not Assigned";
-      }
-    </script>
+        <script>window.NOTEBOOK_KB={{ keybindings }};</script>
+        <script src="{{ $root }}static/shortcuts.js"></script>
+        <script type="text/javascript">
+            document.addEventListener('DOMContentLoaded', function() {
+                NotebookShortcuts.annotate(document.getElementById('nav-home'), 'cancel');
+                NotebookShortcuts.annotate(document.getElementById('nav-about'), 'about');
+                NotebookShortcuts.annotate(document.getElementById('nav-new-page'), 'new_page');
+                NotebookShortcuts.bind([
+                    { action: 'about', handler: function() { document.getElementById('nav-about').click(); } },
+                    { action: 'new_page', handler: function() { document.getElementById('nav-new-page').click(); } },
+                    { action: 'cancel', handler: function() { document.getElementById('nav-home').click(); } }
+                ]);
+
+                var labels = document.querySelectorAll('[data-shortcut-label]');
+                for (var index = 0; index < labels.length; index++) {
+                    var element = labels[index];
+                    element.textContent = NotebookShortcuts.formatCombo(element.getAttribute('data-shortcut-label'));
+                }
+            });
+        </script>
 </head>
 <body>
     <section class="container grid-960 mt-10">
@@ -36,7 +47,11 @@
                 <a href="{{ $root }}" class="navbar-brand mr-10">Rizin Notebook</a>
             </section>
             <section class="navbar-section">
-                <a href="{{ $root }}" class="btn btn-primary">Go Back</a>
+                <a href="{{ $root }}about" class="btn" id="nav-about">About</a>
+                &nbsp;
+                <a href="{{ $root }}new" class="btn" id="nav-new-page">New Page</a>
+                &nbsp;
+                <a href="{{ $root }}" class="btn btn-primary" id="nav-home">Go Back</a>
             </section>
         </header>
         <section class="container">
@@ -68,6 +83,35 @@
                 </div>
                 <a class="btn" href="{{ $root }}settings/environment/edit/new">
                     New Environment Variable
+                </a>
+            </p>
+            <p>
+                <h3 class="s-title">Keyboard Shortcuts</h3>
+                <div class="columns col-gapless">
+                    <div class="column col-1 col-btn spacing-left">
+{{ range $i, $kb := .kb_actions }}
+                        <a class="btn spacing-top" href="{{ $root }}settings/keybinding/edit/{{ index $kb "name" }}">
+                            <i class="icon icon-edit">Edit</i>
+                        </a>
+{{ end }}
+                    </div>
+                    <div class="column col-3 spacing-left">
+{{ range $i, $kb := .kb_actions }}
+                        <div class="input-group">
+                            <span class="input-group-addon detail-size spacing-top height-32px">{{ index $kb "label" }}</span>
+                        </div>
+{{ end }}
+                    </div>
+                    <div class="column col-8">
+{{ range $i, $kb := .kb_actions }}
+                        <div class="input-group spacing-left">
+                            <span class="input-group-addon height-32px spacing-top" data-shortcut-label="{{ index $kb "combo" }}"></span>
+                        </div>
+{{ end }}
+                    </div>
+                </div>
+                <a class="btn" href="{{ $root }}settings/keybinding/reset">
+                    Reset All to Defaults
                 </a>
             </p>
         </section>

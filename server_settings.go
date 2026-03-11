@@ -16,9 +16,17 @@ func serverAddSettings(root *gin.RouterGroup) {
 		if settings == nil {
 			settings = map[string]string{}
 		}
+		// Filter out keybinding entries from the environment display.
+		env := map[string]string{}
+		for k, v := range settings {
+			if !strings.HasPrefix(k, keybindingSettingsPrefix) {
+				env[k] = v
+			}
+		}
 		c.HTML(200, "settings.tmpl", gin.H{
 			"root":        webroot,
-			"environment": settings,
+			"environment": env,
+			"kb_actions":  keybindingActions(),
 		})
 	})
 
@@ -45,12 +53,43 @@ func serverAddSettings(root *gin.RouterGroup) {
 		})
 	})
 
+	// Edit a keybinding.
+	root.GET("/settings/keybinding/edit/:action", func(c *gin.Context) {
+		action := c.Param("action")
+		if _, ok := DefaultKeybindings[action]; !ok {
+			c.Redirect(http.StatusFound, webroot+"settings")
+			return
+		}
+		kb := GetAllKeybindings()
+		c.HTML(200, "settings-edit.tmpl", gin.H{
+			"root":          webroot,
+			"action":        "keybinding",
+			"editkey":       action,
+			"label":         KeybindingLabels[action],
+			"combo":         kb[action],
+			"default_combo": DefaultKeybindings[action],
+		})
+	})
+
+	// Reset all keybindings to defaults.
+	root.GET("/settings/keybinding/reset", func(c *gin.Context) {
+		for action := range DefaultKeybindings {
+			catalog.DeleteSetting(keybindingSettingsPrefix + action)
+		}
+		c.Redirect(http.StatusFound, webroot+"settings")
+	})
+
 	// Handle settings form submissions.
 	root.POST("/settings", func(c *gin.Context) {
 		action := strings.TrimSpace(c.PostForm("action"))
 
 		if action == "environment" {
 			handleEnvironmentSettings(c)
+			return
+		}
+
+		if action == "keybinding" {
+			handleKeybindingSettings(c)
 			return
 		}
 
@@ -83,6 +122,25 @@ func handleEnvironmentSettings(c *gin.Context) {
 		if len(editkey) > 0 {
 			catalog.DeleteSetting(editkey)
 			os.Unsetenv(editkey)
+		}
+	}
+
+	c.Redirect(http.StatusFound, webroot+"settings")
+}
+
+func handleKeybindingSettings(c *gin.Context) {
+	subaction := strings.TrimSpace(c.PostForm("subaction"))
+	editkey := strings.TrimSpace(c.PostForm("editkey"))
+	value := strings.TrimSpace(c.PostForm("value"))
+
+	switch subaction {
+	case "save":
+		if len(editkey) > 0 && len(value) > 0 {
+			catalog.SetSetting(keybindingSettingsPrefix+editkey, value)
+		}
+	case "reset":
+		if len(editkey) > 0 {
+			catalog.DeleteSetting(keybindingSettingsPrefix + editkey)
 		}
 	}
 

@@ -13,6 +13,8 @@
     @font-face { font-family: 'Inconsolata'; src: URL('{{ .root }}static/inconsolata.ttf') format('truetype'); }
   </style>
   <link rel="stylesheet" href="{{ .root }}static/codelines.css">
+  <script>window.NOTEBOOK_KB={{ keybindings }};</script>
+  <script src="{{ .root }}static/shortcuts.js"></script>
 </head>
 <body>
   {{ if .message }}
@@ -27,7 +29,7 @@
     </div>
     <div class="form-group">
       <button class="btn btn-primary" type="submit">Run</button>
-      <button class="btn" type="button" onclick="window.parent.postMessage({type:'iframe-remove'},'*')">Cancel</button>
+      <button class="btn" type="button" id="cancel-script" onclick="window.parent.postMessage({type:'iframe-remove'},'*')">Cancel</button>
       <span style="color:#999;font-size:12px;margin-left:8px;">Ctrl+Enter to run</span>
     </div>
   </form>
@@ -35,6 +37,11 @@
     var createdCellUnique = {{ if .cellUnique }}"{{ .cellUnique }}"{{ else }}""{{ end }};
     var editor = document.getElementById('codeeditor');
     var lines = document.getElementById('codelines');
+    NotebookShortcuts.annotate(document.getElementById('cancel-script'), 'cancel');
+    NotebookShortcuts.bind([
+      { action: 'cancel', allowInInputs: true, handler: function() { document.getElementById('cancel-script').click(); } },
+      { action: 'execute', allowInInputs: true, handler: function() { editor.form.submit(); } }
+    ]);
     editor.addEventListener('scroll', function() {
       lines.scrollTop = editor.scrollTop;
       lines.scrollLeft = editor.scrollLeft;

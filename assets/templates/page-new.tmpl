@@ -13,6 +13,8 @@
         .icon-height { height: 20px; }
         iframe { border: 0px; width: 100%; height: 100% }
     </style>
+    <script>window.NOTEBOOK_KB={{ keybindings }};</script>
+    <script src="{{ $root }}static/shortcuts.js"></script>
     <script type="text/javascript">
       function confirm_delete(event) {
         if (!window.confirm("Are you sure you want to delete it?")) {
@@ -26,6 +28,16 @@
           event.preventDefault();
         }
       }
+      document.addEventListener('DOMContentLoaded', function() {
+        NotebookShortcuts.annotate(document.getElementById('nav-about'), 'about');
+        NotebookShortcuts.annotate(document.getElementById('save-page'), 'save');
+        NotebookShortcuts.bind([
+          { action: 'about', handler: function() { document.getElementById('nav-about').click(); } },
+          { action: 'new_page', handler: function() { window.location.href = '{{ $root }}new'; } },
+          { action: 'save', allowInInputs: true, handler: function() { document.getElementById('save-page').click(); } },
+          { action: 'cancel', handler: function() { document.getElementById('cancel-page').click(); } }
+        ]);
+      });
     </script>
   </head>
 <body>
@@ -36,6 +48,8 @@
         <a href="{{ $root }}" class="navbar-brand mr-10">Rizin Notebook</a>
       </section>
       <section class="navbar-section">
+        <a href="{{ $root }}about" class="btn" id="nav-about">About</a>
+        &nbsp;
         {{ $page.title }}
       </section>
     </header>
@@ -56,8 +70,8 @@
               {{ end }}
             </div>
             <div class="form-group">
-              <button class="btn btn-primary" type="submit">{{ if lt $nlen 1 }}Create{{ else }}Save{{ end }}</button>
-              <a class="btn" href="{{ $root }}">Cancel</a>
+              <button class="btn btn-primary" type="submit" id="save-page">{{ if lt $nlen 1 }}Create{{ else }}Save{{ end }}</button>
+              <a class="btn" href="{{ $root }}" id="cancel-page">Cancel</a>
               {{ if gt $nlen 0 }}
               <a class="btn float-right" href="{{ $root }}delete/{{ .unique }}" onclick="confirm_delete(event)">Delete</a>
               {{ end }}

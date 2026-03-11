@@ -16,6 +16,20 @@
         .background-white { background: white; }
         .spacer-12px { width: 12px; display: inline-block; }
     </style>
+        <script>window.NOTEBOOK_KB={{ keybindings }};</script>
+        <script src="{{ $root }}static/shortcuts.js"></script>
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                NotebookShortcuts.annotate(document.getElementById('nav-home'), 'cancel');
+                NotebookShortcuts.annotate(document.getElementById('nav-settings'), 'settings');
+                NotebookShortcuts.annotate(document.getElementById('nav-new-page'), 'new_page');
+                NotebookShortcuts.bind([
+                    { action: 'new_page', handler: function() { document.getElementById('nav-new-page').click(); } },
+                    { action: 'settings', handler: function() { document.getElementById('nav-settings').click(); } },
+                    { action: 'cancel', handler: function() { document.getElementById('nav-home').click(); } }
+                ]);
+            });
+        </script>
 </head>
 <body>
     <section class="container grid-960 mt-10">
@@ -25,7 +39,11 @@
                 <a href="{{ $root }}" class="navbar-brand mr-10">Rizin Notebook</a>
             </section>
             <section class="navbar-section">
-                <a href="{{ $root }}" class="btn btn-primary">Go Back</a>
+                <a href="{{ $root }}settings" class="btn" id="nav-settings">Settings</a>
+                &nbsp;
+                <a href="{{ $root }}new" class="btn" id="nav-new-page">New Page</a>
+                &nbsp;
+                <a href="{{ $root }}" class="btn btn-primary" id="nav-home">Go Back</a>
             </section>
         </header>
         <section class="container">
