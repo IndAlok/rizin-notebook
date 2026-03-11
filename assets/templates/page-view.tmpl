@@ -108,8 +108,73 @@
           }
         } else if (e.data.type === 'iframe-reload') {
           location.reload();
+        } else if (e.data.type === 'iframe-add-cell') {
+          var iframes = document.querySelectorAll('iframe');
+          for (var k = 0; k < iframes.length; k++) {
+            try {
+              if (iframes[k].contentWindow === e.source) {
+                appendOutputCell(iframes[k], e.data);
+                break;
+              }
+            } catch(err) {}
+          }
         }
       });
+      function appendOutputCell(sourceIframe, data) {
+        if (!data || !data.cellUnique || !data.outputUrl) return;
+        if (document.getElementById('cell-' + data.cellUnique)) return;
+
+        var body = document.getElementById('page-body');
+        if (!body) return;
+
+        var group = document.createElement('div');
+        group.className = 'cell-group';
+        group.id = 'cell-' + data.cellUnique;
+
+        var inputGroup = document.createElement('div');
+        inputGroup.className = 'input-group spacing-top';
+
+        var code = document.createElement('code');
+        code.className = 'input-group-addon spacing-right spacing-left';
+        if (data.cellType === 'script') {
+          code.style.display = 'block';
+          code.style.whiteSpace = 'pre-wrap';
+        }
+        code.textContent = data.content || '';
+        inputGroup.appendChild(code);
+
+        var button = document.createElement('button');
+        button.className = 'btn float-right';
+        button.type = 'button';
+        button.innerHTML = '<i class="icon icon-delete icon-height">Delete</i>';
+        button.onclick = function() { deleteCell(data.deleteUrl, data.cellUnique); };
+        inputGroup.appendChild(button);
+
+        var outputGroup = document.createElement('div');
+        outputGroup.className = 'input-group spacing-top';
+
+        var iframe = document.createElement('iframe');
+        iframe.id = 'output-dyn-' + data.cellUnique;
+        iframe.setAttribute('frameborder', '0');
+        iframe.setAttribute('marginheight', '0');
+        iframe.setAttribute('marginwidth', '0');
+        iframe.setAttribute('width', '100%');
+        iframe.setAttribute('scrolling', 'no');
+        iframe.setAttribute('onload', 'handle(this)');
+        iframe.className = 'input-group-addon spacing-left output-frame';
+        iframe.src = data.outputUrl;
+        outputGroup.appendChild(iframe);
+
+        group.appendChild(inputGroup);
+        group.appendChild(outputGroup);
+
+        var anchor = sourceIframe.closest('.panel');
+        if (anchor && anchor.parentNode === body) {
+          body.insertBefore(group, anchor);
+        } else {
+          body.insertBefore(group, body.childNodes[body.childNodes.length - 2]);
+        }
+      }
       function deleteCell(url, cellId) {
         if (!window.confirm("Are you sure you want to delete this cell?")) return;
         fetch(url, {redirect: 'follow'}).then(function() {

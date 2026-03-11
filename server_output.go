@@ -104,9 +104,11 @@ func serverAddOutput(output *gin.RouterGroup) {
 		// Get or open the pipe.
 		rz := notebook.open(unique, true)
 		if rz == nil {
-			c.HTML(http.StatusInternalServerError, "console-error.tmpl", gin.H{
-				"root":  webroot,
-				"error": "Failed to open Rizin pipe",
+			c.HTML(http.StatusInternalServerError, "console.tmpl", gin.H{
+				"root":    webroot,
+				"unique":  unique,
+				"command": command,
+				"error":   "Failed to open Rizin pipe",
 			})
 			return
 		}
@@ -114,9 +116,11 @@ func serverAddOutput(output *gin.RouterGroup) {
 		// Execute the command.
 		result, err := rz.exec(command)
 		if err != nil {
-			c.HTML(200, "console-error.tmpl", gin.H{
-				"root":  webroot,
-				"error": err.Error(),
+			c.HTML(200, "console.tmpl", gin.H{
+				"root":    webroot,
+				"unique":  unique,
+				"command": command,
+				"error":   err.Error(),
 			})
 			return
 		}
@@ -124,17 +128,24 @@ func serverAddOutput(output *gin.RouterGroup) {
 		// Create a command cell and save the output in SQLite.
 		eunique := Nonce(ElementNonceSize)
 		if storeErr := catalog.AddCell(unique, eunique, "command", command); storeErr != nil {
-			c.HTML(http.StatusInternalServerError, "console-error.tmpl", gin.H{
-				"root":  webroot,
-				"error": "Failed to create command element",
+			c.HTML(http.StatusInternalServerError, "console.tmpl", gin.H{
+				"root":    webroot,
+				"unique":  unique,
+				"command": command,
+				"error":   "Failed to create command element",
 			})
 			return
 		}
 
 		catalog.UpdateCellOutput(unique, eunique, []byte(result))
 
-		// Redirect to "loaded" to trigger parent page reload.
-		c.Redirect(http.StatusFound, webroot+"output/loaded")
+		c.HTML(http.StatusOK, "console.tmpl", gin.H{
+			"root":       webroot,
+			"unique":     unique,
+			"command":    command,
+			"message":    "Command executed",
+			"cellUnique": eunique,
+		})
 	})
 
 	// Execute a JavaScript script.
@@ -160,9 +171,11 @@ func serverAddOutput(output *gin.RouterGroup) {
 		// Create a script cell in SQLite.
 		eunique := Nonce(ElementNonceSize)
 		if storeErr := catalog.AddCell(unique, eunique, "script", script); storeErr != nil {
-			c.HTML(http.StatusInternalServerError, "console-error.tmpl", gin.H{
-				"root":  webroot,
-				"error": "Failed to create script element",
+			c.HTML(http.StatusInternalServerError, "script.tmpl", gin.H{
+				"root":   webroot,
+				"unique": unique,
+				"script": script,
+				"error":  "Failed to create script element",
 			})
 			return
 		}
@@ -173,17 +186,25 @@ func serverAddOutput(output *gin.RouterGroup) {
 
 		if err != nil {
 			catalog.UpdateCellOutput(unique, eunique, []byte(err.Error()))
-			c.HTML(200, "console-error.tmpl", gin.H{
-				"root":  webroot,
-				"error": err.Error(),
+			c.HTML(200, "script.tmpl", gin.H{
+				"root":       webroot,
+				"unique":     unique,
+				"script":     script,
+				"error":      err.Error(),
+				"cellUnique": eunique,
 			})
 			return
 		}
 
 		catalog.UpdateCellOutput(unique, eunique, []byte(result))
 
-		// Redirect to "loaded" to trigger parent page reload.
-		c.Redirect(http.StatusFound, webroot+"output/loaded")
+		c.HTML(http.StatusOK, "script.tmpl", gin.H{
+			"root":       webroot,
+			"unique":     unique,
+			"script":     script,
+			"message":    "Script executed",
+			"cellUnique": eunique,
+		})
 	})
 
 	// Pseudo-page for iframe deletion detection.

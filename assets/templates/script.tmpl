@@ -15,9 +15,15 @@
   <link rel="stylesheet" href="{{ .root }}static/codelines.css">
 </head>
 <body>
+  {{ if .message }}
+  <div class="toast toast-success" style="margin: 12px 12px 0 12px;">{{ .message }}</div>
+  {{ end }}
+  {{ if .error }}
+  <div class="toast toast-error" style="margin: 12px 12px 0 12px;">{{ .error }}</div>
+  {{ end }}
   <form style="margin-top: 15px; height: 100%;" action="{{ .root }}output/script/{{ .unique }}" method="POST">
     <div class="form-group">
-      <p><textarea id="codelines" class="code-lines" wrap="off" readonly>1 </textarea><textarea id="codeeditor" class="code-editor" wrap="off" name="script">console.log(rizin.cmd("?e hello world").trim(), "from the script");</textarea></p>
+      <p><textarea id="codelines" class="code-lines" wrap="off" readonly>1 </textarea><textarea id="codeeditor" class="code-editor" wrap="off" name="script">{{ if .script }}{{ .script }}{{ else }}console.log(rizin.cmd("?e hello world").trim(), "from the script");{{ end }}</textarea></p>
     </div>
     <div class="form-group">
       <button class="btn btn-primary" type="submit">Run</button>
@@ -26,6 +32,7 @@
     </div>
   </form>
   <script type="text/javascript">
+    var createdCellUnique = {{ if .cellUnique }}"{{ .cellUnique }}"{{ else }}""{{ end }};
     var editor = document.getElementById('codeeditor');
     var lines = document.getElementById('codelines');
     editor.addEventListener('scroll', function() {
@@ -56,6 +63,20 @@
     editor.addEventListener('keydown', function(e) {
       if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); editor.form.submit(); }
     });
+    (function() {
+      updateLines();
+      if (createdCellUnique && window.parent !== window) {
+        window.parent.postMessage({
+          type:'iframe-add-cell',
+          cellType:'script',
+          cellUnique:createdCellUnique,
+          content:editor.value,
+          outputUrl:'{{ .root }}output/view/{{ .unique }}/' + createdCellUnique,
+          deleteUrl:'{{ .root }}output/delete/{{ .unique }}/' + createdCellUnique
+        }, '*');
+      }
+      editor.focus();
+    })();
   </script>
 </body>
 </html>

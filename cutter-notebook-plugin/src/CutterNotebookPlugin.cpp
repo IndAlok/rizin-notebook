@@ -876,8 +876,10 @@ void CutterNotebookPlugin::setupInterface(MainWindow *main)
 
     auto *composeButtons = new QHBoxLayout();
     auto *btnSubmit = new QPushButton("Submit", composeTab);
+    auto *btnCancelCompose = new QPushButton("Cancel", composeTab);
     auto *btnComposeReload = new QPushButton("Reload Page", composeTab);
     composeButtons->addWidget(btnSubmit);
+    composeButtons->addWidget(btnCancelCompose);
     composeButtons->addWidget(btnComposeReload);
     composeButtons->addStretch(1);
     composeLayout->addLayout(composeButtons);
@@ -901,6 +903,13 @@ void CutterNotebookPlugin::setupInterface(MainWindow *main)
     connect(btnBrowser, &QPushButton::clicked, this, &CutterNotebookPlugin::onOpenBrowser);
     connect(btnRefresh, &QPushButton::clicked, this, &CutterNotebookPlugin::onListPages);
     connect(btnSubmit, &QPushButton::clicked, this, &CutterNotebookPlugin::onSubmitEditor);
+    connect(btnCancelCompose, &QPushButton::clicked, this, [this]() {
+        if (!editor) {
+            return;
+        }
+        editor->clear();
+        editor->setFocus();
+    });
     connect(editorMode, &QComboBox::currentIndexChanged, this, [this]() { updateEditorPlaceholder(); });
     connect(pageListWidget, &QListWidget::currentTextChanged, this, [this]() {
         if (m_populatingPages) {
@@ -1313,9 +1322,9 @@ void CutterNotebookPlugin::onSubmitEditor()
             return;
         }
 
-        editor->clear();
         loadPage(pageId, true);
         refreshDockStatus();
+        editor->setFocus();
         return;
     }
 
@@ -1352,9 +1361,13 @@ void CutterNotebookPlugin::onSubmitEditor()
         return;
     }
 
-    editor->clear();
+    const bool keepEditorOpen = (mode == QLatin1String("exec-script"));
+    if (!keepEditorOpen) {
+        editor->clear();
+    }
     loadPage(pageId, true);
     refreshDockStatus();
+    editor->setFocus();
 }
 
 void CutterNotebookPlugin::onReloadSelectedPage()

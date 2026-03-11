@@ -13,9 +13,15 @@
   </style>
 </head>
 <body>
+  {{ if .message }}
+  <div class="toast toast-success" style="margin: 12px 12px 0 12px;">{{ .message }}</div>
+  {{ end }}
+  {{ if .error }}
+  <div class="toast toast-error" style="margin: 12px 12px 0 12px;">{{ .error }}</div>
+  {{ end }}
   <form id="cmdform" style="margin-top: 15px; height: 100%;" action="{{ .root }}output/exec/{{ .unique }}" method="POST">
     <div class="form-group">
-      <input type="text" class="form-input command-input" id="cmdinput" name="command" value="" placeholder="Rizin command (e.g. pdf, aaa, ii)" autofocus/>
+      <input type="text" class="form-input command-input" id="cmdinput" name="command" value="{{ .command }}" placeholder="Rizin command (e.g. pdf, aaa, ii)" autofocus/>
     </div>
     <div class="form-group">
       <button class="btn btn-primary" type="submit">Exec</button>
@@ -24,6 +30,7 @@
     </div>
   </form>
   <script>
+    var createdCellUnique = {{ if .cellUnique }}"{{ .cellUnique }}"{{ else }}""{{ end }};
     var input = document.getElementById('cmdinput');
     input.addEventListener('keydown', function(e) {
       if (e.ctrlKey && e.key === 'Enter') document.getElementById('cmdform').submit();
@@ -32,8 +39,20 @@
       if (!input.value.trim()) { e.preventDefault(); window.parent.postMessage({type:'iframe-remove'},'*'); }
     });
     (function(){
+      if (createdCellUnique && window.parent !== window) {
+        window.parent.postMessage({
+          type:'iframe-add-cell',
+          cellType:'command',
+          cellUnique:createdCellUnique,
+          content:input.value,
+          outputUrl:'{{ .root }}output/view/{{ .unique }}/' + createdCellUnique,
+          deleteUrl:'{{ .root }}output/delete/{{ .unique }}/' + createdCellUnique
+        }, '*');
+      }
       var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
       if (window.parent !== window) window.parent.postMessage({type:'iframe-resize',height:h},'*');
+      input.focus();
+      input.select();
     })();
   </script>
 </body>
