@@ -132,6 +132,9 @@ func serverAddAPI(root *gin.RouterGroup) {
 	api.POST("/pages/:id/pipe/open", apiPipeOpen)
 	api.POST("/pages/:id/pipe/close", apiPipeClose)
 
+	// ─── Commands ───────────────────────────────────────
+	api.GET("/commands", apiGetCommands)
+
 	// ─── Settings ───────────────────────────────────────
 	api.GET("/settings", apiGetSettings)
 	api.PUT("/settings", apiSetSetting)
@@ -153,6 +156,18 @@ func serverAddAPI(root *gin.RouterGroup) {
 	jsonAPI.POST("/pages/import", apiJSONImportPage)
 	jsonAPI.POST("/pages/:id/pipe/open", apiJSONPipeOpen)
 	jsonAPI.POST("/pages/:id/pipe/close", apiJSONPipeClose)
+	jsonAPI.GET("/commands", apiGetCommands)
+	jsonAPI.GET("/settings", apiJSONGetSettings)
+}
+
+// apiJSONGetSettings returns all server-wide settings as a JSON map.
+func apiJSONGetSettings(c *gin.Context) {
+	settings, err := catalog.GetAllSettings()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, settings)
 }
 
 // ─── Health Check ───────────────────────────────────────────
@@ -1265,4 +1280,14 @@ func apiDeleteSetting(c *gin.Context) {
 
 	os.Unsetenv(key)
 	respondProto(c, http.StatusOK, &pb.SuccessResponse{Ok: true, Message: "setting deleted"})
+}
+
+// ─── Commands ───────────────────────────────────────────────
+
+// apiGetCommands returns all known rizin commands as a JSON map.
+func apiGetCommands(c *gin.Context) {
+	notebook.mutex.Lock()
+	cmds := notebook.cmds
+	notebook.mutex.Unlock()
+	c.JSON(http.StatusOK, cmds)
 }

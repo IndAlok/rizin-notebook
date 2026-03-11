@@ -4,6 +4,7 @@
 #include <Cutter.h>
 
 #include <QAction>
+#include <QAbstractItemView>
 #include <QComboBox>
 #include <QCryptographicHash>
 #include <QDockWidget>
@@ -28,6 +29,7 @@
 #include <QNetworkRequest>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QScrollBar>
 #include <QSettings>
 #include <QShortcut>
 #include <QSplitter>
@@ -38,9 +40,11 @@
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QEventLoop>
+#include <QKeyEvent>
 #include <QTimer>
 #include <QProcess>
 #include <QThread>
+#include <QScreen>
 
 /* ── Static helpers ──────────────────────────────────────────────────── */
 
@@ -407,6 +411,305 @@ void CutterNotebookPlugin::updateComposeLabels(const QVariantMap &page)
     }
 }
 
+/* ── Autocomplete helpers ─────────────────────────────────────────────── */
+
+void CutterNotebookPlugin::fetchCommandsForCompleter()
+{
+    auto fetchByPath = [this](const QString &path, QByteArray *outData, int *outStatus) -> bool {
+        QString error;
+        const QByteArray data = sendJsonRequest(QStringLiteral("GET"),
+                                                path,
+                                                QByteArray(),
+                                                outStatus,
+                                                &error);
+        if (data.isEmpty() || *outStatus >= 400) {
+            return false;
+        }
+        *outData = data;
+        return true;
+    };
+
+    QByteArray data;
+    int statusCode = 0;
+    const bool fetched = fetchByPath(QStringLiteral("/api/v1/json/commands"), &data, &statusCode) ||
+                         fetchByPath(QStringLiteral("/api/v1/commands"), &data, &statusCode);
+    if (!fetched) {
+        // Fallback: get commands directly from the current Cutter core.
+        // This keeps autocomplete functional even when the connected notebook
+        // server is an older build without /api/v1/json/commands.
+        const QString localJson = Core() ? Core()->cmdRaw(QStringLiteral("?*j")).trimmed() : QString();
+        if (!localJson.isEmpty()) {
+            QJsonParseError localParseError;
+            const QJsonDocument localDoc = QJsonDocument::fromJson(localJson.toUtf8(), &localParseError);
+            if (localParseError.error == QJsonParseError::NoError && localDoc.isObject()) {
+                const QJsonObject localObj = localDoc.object();
+                QStringList cmds;
+                cmds.reserve(localObj.size());
+                for (auto it = localObj.begin(); it != localObj.end(); ++it) {
+                    cmds.append(it.key());
+                }
+                cmds.sort();
+                cmdCommandList = cmds;
+                if (editor && editor->hasFocus()) {
+                    updateAutocomplete();
+                }
+                return;
+            }
+        }
+
+        // Server/core might still be loading commands. Retry after a short delay.
+        if (cmdCommandList.isEmpty()) {
+            QTimer::singleShot(3000, this, [this]() {
+                if (cmdCommandList.isEmpty()) {
+                    fetchCommandsForCompleter();
+                }
+            });
+        }
+        return;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        if (cmdCommandList.isEmpty()) {
+            QTimer::singleShot(3000, this, [this]() {
+                if (cmdCommandList.isEmpty() && connected) {
+                    fetchCommandsForCompleter();
+                }
+            });
+        }
+        return;
+    }
+
+    const QJsonObject obj = doc.object();
+    if (obj.isEmpty() && cmdCommandList.isEmpty()) {
+        // Server returned empty commands (still loading). Retry after 3 seconds.
+        QTimer::singleShot(3000, this, [this]() {
+            if (cmdCommandList.isEmpty() && connected) {
+                fetchCommandsForCompleter();
+            }
+        });
+        return;
+    }
+
+    QStringList cmds;
+    cmds.reserve(obj.size());
+    for (auto it = obj.begin(); it != obj.end(); ++it) {
+        cmds.append(it.key());
+    }
+    cmds.sort();
+    cmdCommandList = cmds;
+
+    if (editor && editor->hasFocus()) {
+        updateAutocomplete();
+    }
+}
+
+void CutterNotebookPlugin::fetchAutocompleteSettings()
+{
+    int statusCode = 0;
+    QString error;
+    const QByteArray data = sendJsonRequest(QStringLiteral("GET"),
+                                            QStringLiteral("/api/v1/json/settings"),
+                                            QByteArray(),
+                                            &statusCode,
+                                            &error);
+    if (data.isEmpty() || statusCode >= 400) {
+        return;
+    }
+
+    const QJsonObject obj = QJsonDocument::fromJson(data).object();
+
+    auto parseIntSetting = [&obj](const QString &key, int minVal, int maxVal, int current) {
+        if (!obj.contains(key)) {
+            return current;
+        }
+        const QJsonValue valNode = obj.value(key);
+        bool ok = false;
+        int val = 0;
+        if (valNode.isString()) {
+            val = valNode.toString().toInt(&ok);
+        } else if (valNode.isDouble()) {
+            val = valNode.toInt();
+            ok = true;
+        }
+        if (!ok) {
+            return current;
+        }
+        if (val < minVal) {
+            val = minVal;
+        } else if (val > maxVal) {
+            val = maxVal;
+        }
+        return val;
+    };
+
+    maxCompleterResults = parseIntSetting(QStringLiteral("ac:max_results"), 1, 100, maxCompleterResults);
+    minCompleterChars = parseIntSetting(QStringLiteral("ac:min_chars"), 1, 10, minCompleterChars);
+}
+
+void CutterNotebookPlugin::acceptAutocomplete()
+{
+    if (!acPopup || !acPopup->currentItem() || !editor) {
+        return;
+    }
+    const QString completion = acPopup->currentItem()->text();
+    acPopup->hide();
+
+    QTextCursor tc = editor->textCursor();
+    tc.movePosition(QTextCursor::StartOfBlock, QTextCursor::MoveAnchor);
+    tc.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    const QString line = tc.selectedText();
+
+    int spaceIdx = line.indexOf(' ');
+    if (spaceIdx < 0) {
+        tc.insertText(completion);
+    } else {
+        tc.movePosition(QTextCursor::StartOfBlock, QTextCursor::MoveAnchor);
+        tc.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, spaceIdx);
+        tc.insertText(completion);
+    }
+    editor->setTextCursor(tc);
+}
+
+void CutterNotebookPlugin::updateAutocomplete()
+{
+    if (!editor || !acPopup || !editorMode) {
+        return;
+    }
+
+    const QString mode = editorMode->currentData().toString();
+    const bool isCommandMode = (mode == QLatin1String("exec-command") || mode == QLatin1String("command"));
+    if (!isCommandMode) {
+        acPopup->hide();
+        return;
+    }
+
+    if (cmdCommandList.isEmpty()) {
+        if (connected) {
+            fetchCommandsForCompleter();
+        }
+        acPopup->hide();
+        return;
+    }
+
+    QTextCursor tc = editor->textCursor();
+    tc.movePosition(QTextCursor::StartOfBlock, QTextCursor::MoveAnchor);
+    tc.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    const QString line = tc.selectedText();
+
+    int spaceIdx = line.indexOf(' ');
+    QString prefix = (spaceIdx < 0) ? line.trimmed() : line.left(spaceIdx).trimmed();
+
+    if (prefix.isEmpty() || prefix.length() < minCompleterChars) {
+        acPopup->hide();
+        return;
+    }
+
+    // Filter commands, preferring prefix matches over generic contains matches.
+    acPopup->clear();
+    int count = 0;
+    const QString lowerPrefix = prefix.toLower();
+    QStringList prefixMatches;
+    QStringList containsMatches;
+    for (const QString &cmd : cmdCommandList) {
+        const QString lowerCmd = cmd.toLower();
+        if (lowerCmd.startsWith(lowerPrefix)) {
+            prefixMatches.append(cmd);
+        } else if (lowerCmd.contains(lowerPrefix)) {
+            containsMatches.append(cmd);
+        }
+    }
+
+    const QStringList matches = prefixMatches + containsMatches;
+    for (const QString &cmd : matches) {
+        if (!cmd.isEmpty()) {
+            acPopup->addItem(cmd);
+            if (++count >= maxCompleterResults) {
+                break;
+            }
+        }
+    }
+
+    if (count == 0) {
+        acPopup->hide();
+        return;
+    }
+
+    // Hide if the only match is exactly what the user typed.
+    if (count == 1 && acPopup->item(0)->text().compare(prefix, Qt::CaseInsensitive) == 0) {
+        acPopup->hide();
+        return;
+    }
+
+    acPopup->setCurrentRow(0);
+
+    int rowH = acPopup->sizeHintForRow(0);
+    if (rowH < 1) {
+        rowH = 20;
+    }
+    const int popupW = qMax(280, editor->viewport()->width() / 2);
+    const int popupH = qMin(count * rowH + 6, 300);
+    acPopup->setFixedWidth(popupW);
+    acPopup->setFixedHeight(popupH);
+
+    // Map cursor rect to global screen coordinates (popup is top-level).
+    const QRect cr = editor->cursorRect();
+    QPoint globalPos = editor->viewport()->mapToGlobal(
+        QPoint(cr.left(), cr.bottom() + 2));
+
+    // Keep popup on-screen.
+    QScreen *screen = editor->screen();
+    if (screen) {
+        const QRect sr = screen->availableGeometry();
+        if (globalPos.y() + popupH > sr.bottom()) {
+            globalPos.setY(editor->viewport()->mapToGlobal(
+                QPoint(0, cr.top())).y() - popupH - 2);
+        }
+        if (globalPos.x() + popupW > sr.right()) {
+            globalPos.setX(qMax(sr.left(), sr.right() - popupW));
+        }
+    }
+
+    acPopup->move(globalPos);
+    acPopup->show();
+    acPopup->raise();
+}
+
+bool CutterNotebookPlugin::eventFilter(QObject *obj, QEvent *event)
+{
+    if (obj == editor && event->type() == QEvent::KeyPress && acPopup && acPopup->isVisible()) {
+        auto *ke = static_cast<QKeyEvent *>(event);
+        switch (ke->key()) {
+        case Qt::Key_Down: {
+            int row = acPopup->currentRow();
+            if (row < acPopup->count() - 1) {
+                acPopup->setCurrentRow(row + 1);
+            }
+            return true;
+        }
+        case Qt::Key_Up: {
+            int row = acPopup->currentRow();
+            if (row > 0) {
+                acPopup->setCurrentRow(row - 1);
+            }
+            return true;
+        }
+        case Qt::Key_Tab:
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+            acceptAutocomplete();
+            return true;
+        case Qt::Key_Escape:
+            acPopup->hide();
+            return true;
+        default:
+            break;
+        }
+    }
+    return QObject::eventFilter(obj, event);
+}
+
 void CutterNotebookPlugin::updateEditorPlaceholder()
 {
     if (!editor || !editorMode) {
@@ -685,6 +988,10 @@ void CutterNotebookPlugin::refreshDockStatus()
     }
 
     connected = true;
+    if (cmdCommandList.isEmpty()) {
+        fetchCommandsForCompleter();
+        fetchAutocompleteSettings();
+    }
 
     int statusCode = 0;
     QString error;
@@ -882,6 +1189,35 @@ void CutterNotebookPlugin::setupInterface(MainWindow *main)
     editor = new QPlainTextEdit(composeTab);
     composeLayout->addWidget(editor, 1);
 
+    // --- command autocomplete via top-level tool window ---
+    // The popup MUST be a top-level window, NOT a child of the editor
+    // viewport.  QPlainTextEdit's viewport repaints over child widgets
+    // on every keystroke, making embedded child popups invisible.
+    acPopup = new QListWidget();
+    acPopup->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint
+                            | Qt::WindowStaysOnTopHint
+                            | Qt::WindowDoesNotAcceptFocus);
+    acPopup->setAttribute(Qt::WA_ShowWithoutActivating);
+    acPopup->hide();
+    acPopup->setFocusPolicy(Qt::NoFocus);
+    acPopup->setMouseTracking(true);
+    acPopup->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    acPopup->setSelectionMode(QAbstractItemView::SingleSelection);
+    acPopup->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    acPopup->setStyleSheet(QStringLiteral(
+        "QListWidget { border: 1px solid #888; font-family: monospace; font-size: 12px;"
+        "  background-color: palette(base); color: palette(text); }"
+        "QListWidget::item { padding: 2px 6px; }"
+        "QListWidget::item:selected { background: #3080d0; color: white; }"));
+    connect(acPopup, &QListWidget::itemClicked, this, [this](QListWidgetItem *) {
+        acceptAutocomplete();
+    });
+    editor->installEventFilter(this);
+    connect(editor, &QPlainTextEdit::textChanged,
+            this, &CutterNotebookPlugin::updateAutocomplete);
+    connect(editorMode, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this]() { updateAutocomplete(); });
+
     auto *composeButtons = new QHBoxLayout();
     auto *btnSubmit = new QPushButton("Submit", composeTab);
     auto *btnCancelCompose = new QPushButton("Cancel", composeTab);
@@ -1043,6 +1379,11 @@ void CutterNotebookPlugin::setupInterface(MainWindow *main)
 
 void CutterNotebookPlugin::terminate()
 {
+    if (acPopup) {
+        acPopup->hide();
+        delete acPopup;
+        acPopup = nullptr;
+    }
     if (dockWidget) {
         dockWidget->deleteLater();
         dockWidget = nullptr;
@@ -1079,6 +1420,8 @@ void CutterNotebookPlugin::onConnect()
         updateConnectionUI();
         populatePages(false);
         refreshDockStatus();
+        fetchCommandsForCompleter();
+        fetchAutocompleteSettings();
         QMessageBox::information(nullptr, "Notebook", QStringLiteral("Connected to %1").arg(safeUrl));
     } else {
         connected = false;
@@ -1121,6 +1464,8 @@ void CutterNotebookPlugin::onSpawn()
         updateConnectionUI();
         populatePages(false);
         refreshDockStatus();
+        fetchCommandsForCompleter();
+        fetchAutocompleteSettings();
         QMessageBox::information(nullptr, "Notebook", "Server spawned and connected.");
     } else {
         connected = false;

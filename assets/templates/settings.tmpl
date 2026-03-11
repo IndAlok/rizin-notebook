@@ -114,6 +114,35 @@
                     Reset All to Defaults
                 </a>
             </p>
+            <p>
+                <h3 class="s-title">Autocomplete Settings</h3>
+                <div class="columns col-gapless">
+                    <div class="column col-1 col-btn spacing-left">
+{{ range $i, $ac := .ac_actions }}
+                        <a class="btn spacing-top" href="{{ $root }}settings/autocomplete/edit/{{ index $ac "name" }}">
+                            <i class="icon icon-edit">Edit</i>
+                        </a>
+{{ end }}
+                    </div>
+                    <div class="column col-3 spacing-left">
+{{ range $i, $ac := .ac_actions }}
+                        <div class="input-group">
+                            <span class="input-group-addon detail-size spacing-top height-32px">{{ index $ac "label" }}</span>
+                        </div>
+{{ end }}
+                    </div>
+                    <div class="column col-8">
+{{ range $i, $ac := .ac_actions }}
+                        <div class="input-group spacing-left">
+                            <span class="input-group-addon height-32px spacing-top">{{ index $ac "value" }}</span>
+                        </div>
+{{ end }}
+                    </div>
+                </div>
+                <a class="btn" href="{{ $root }}settings/autocomplete/reset">
+                    Reset to Defaults
+                </a>
+            </p>
         </section>
     </section>
 </body>

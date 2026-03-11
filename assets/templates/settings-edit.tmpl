@@ -54,6 +54,26 @@
           input.placeholder = 'e.g. alt+n, ctrl+s, ctrl+enter';
         });
       }
+{{ else if eq .action "autocomplete" }}
+      function verify(event) {
+        var raw = document.getElementById('value').value.trim();
+        var val = parseInt(raw, 10);
+        if (isNaN(val) || raw.length < 1) {
+          alert("Please enter a valid number.");
+          event.preventDefault();
+          return;
+        }
+        if (val < 1) {
+          alert("Value must be at least 1.");
+          event.preventDefault();
+          return;
+        }
+        if (val > 100) {
+          alert("Value must be at most 100.");
+          event.preventDefault();
+          return;
+        }
+      }
 {{ else }}
       function verify(event) {}
 {{ end }}
@@ -112,6 +132,13 @@
                 <button class="btn input-group-btn" type="button" id="record-btn" onclick="startRecording()">Record</button>
               </div>
               <p class="form-input-hint">Default: <code data-shortcut-label="{{ .default_combo }}"></code> &mdash; Type a combo like <code>alt+n</code> or click Record and press keys.</p>
+              {{ else if eq .action "autocomplete" }}
+              <input type="hidden" name="editkey" value="{{ .editkey }}" />
+              <input type="hidden" name="subaction" id="subaction" value="save" />
+              <label class="form-label">Setting: <strong>{{ .label }}</strong></label>
+              <label class="form-label" for="value">Value</label>
+              <input type="number" class="form-input" name="value" id="value" value="{{ .current_value }}" min="1" max="100" placeholder="Enter a number (1–100)" />
+              <p class="form-input-hint">Default: <code>{{ .default_value }}</code> &mdash; Enter a number between 1 and 100.</p>
               {{ end }}
             </div>
             <div class="form-group">
@@ -124,6 +151,9 @@
               <a class="btn" href="{{ $root }}settings">Cancel</a>
               {{ end }}
               {{ else if eq .action "keybinding" }}
+              <a class="btn" href="{{ $root }}settings">Cancel</a>
+              <button class="btn float-right" type="button" onclick="document.getElementById('subaction').value='reset';this.form.submit()">Reset to Default</button>
+              {{ else if eq .action "autocomplete" }}
               <a class="btn" href="{{ $root }}settings">Cancel</a>
               <button class="btn float-right" type="button" onclick="document.getElementById('subaction').value='reset';this.form.submit()">Reset to Default</button>
               {{ else }}

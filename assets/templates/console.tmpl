@@ -12,7 +12,10 @@
     .button-edit { width: 75px ! important; margin-top: 9px; margin-right: 9px; }
   </style>
   <script>window.NOTEBOOK_KB={{ keybindings }};</script>
+  <script>window.NB_ROOT="{{ .root }}";</script>
+  <script>window.NB_AC_CONFIG={{ autocomplete_config }};</script>
   <script src="{{ .root }}static/shortcuts.js"></script>
+  <script src="{{ .root }}static/autocomplete.js"></script>
 </head>
 <body>
   {{ if .message }}
@@ -61,6 +64,8 @@
       input.focus();
       input.select();
     })();
+    var acCfg = window.NB_AC_CONFIG || {};
+    NotebookAutocomplete.attach(input, { apiUrl: '{{ .root }}api/v1/json/commands', maxResults: acCfg.max_results, minChars: acCfg.min_chars });
   </script>
 </body>
 </html>

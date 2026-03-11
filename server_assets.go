@@ -38,6 +38,9 @@ var functionMap = template.FuncMap{
 	"keybindings": func() template.JS {
 		return getKeybindingsJSON()
 	},
+	"autocomplete_config": func() template.JS {
+		return getAutocompleteConfigJSON()
+	},
 }
 
 /* ─── Custom template render ─────────────────────────────── */

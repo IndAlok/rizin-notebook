@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -16,10 +17,10 @@ func serverAddSettings(root *gin.RouterGroup) {
 		if settings == nil {
 			settings = map[string]string{}
 		}
-		// Filter out keybinding entries from the environment display.
+		// Filter out keybinding and autocomplete entries from the environment display.
 		env := map[string]string{}
 		for k, v := range settings {
-			if !strings.HasPrefix(k, keybindingSettingsPrefix) {
+			if !strings.HasPrefix(k, keybindingSettingsPrefix) && !strings.HasPrefix(k, autocompleteSettingsPrefix) {
 				env[k] = v
 			}
 		}
@@ -27,6 +28,7 @@ func serverAddSettings(root *gin.RouterGroup) {
 			"root":        webroot,
 			"environment": env,
 			"kb_actions":  keybindingActions(),
+			"ac_actions":  autocompleteActions(),
 		})
 	})
 
@@ -79,6 +81,32 @@ func serverAddSettings(root *gin.RouterGroup) {
 		c.Redirect(http.StatusFound, webroot+"settings")
 	})
 
+	// Edit an autocomplete setting.
+	root.GET("/settings/autocomplete/edit/:key", func(c *gin.Context) {
+		key := c.Param("key")
+		if _, ok := AutocompleteLabels[key]; !ok {
+			c.Redirect(http.StatusFound, webroot+"settings")
+			return
+		}
+		cfg := GetAutocompleteConfig()
+		c.HTML(200, "settings-edit.tmpl", gin.H{
+			"root":          webroot,
+			"action":        "autocomplete",
+			"editkey":       key,
+			"label":         AutocompleteLabels[key],
+			"current_value": strconv.Itoa(cfg[key]),
+			"default_value": AutocompleteDefaults[key],
+		})
+	})
+
+	// Reset all autocomplete settings to defaults.
+	root.GET("/settings/autocomplete/reset", func(c *gin.Context) {
+		for _, key := range AutocompleteSettingKeys {
+			catalog.DeleteSetting(autocompleteSettingsPrefix + key)
+		}
+		c.Redirect(http.StatusFound, webroot+"settings")
+	})
+
 	// Handle settings form submissions.
 	root.POST("/settings", func(c *gin.Context) {
 		action := strings.TrimSpace(c.PostForm("action"))
@@ -90,6 +118,11 @@ func serverAddSettings(root *gin.RouterGroup) {
 
 		if action == "keybinding" {
 			handleKeybindingSettings(c)
+			return
+		}
+
+		if action == "autocomplete" {
+			handleAutocompleteSettings(c)
 			return
 		}
 
@@ -141,6 +174,30 @@ func handleKeybindingSettings(c *gin.Context) {
 	case "reset":
 		if len(editkey) > 0 {
 			catalog.DeleteSetting(keybindingSettingsPrefix + editkey)
+		}
+	}
+
+	c.Redirect(http.StatusFound, webroot+"settings")
+}
+
+func handleAutocompleteSettings(c *gin.Context) {
+	subaction := strings.TrimSpace(c.PostForm("subaction"))
+	editkey := strings.TrimSpace(c.PostForm("editkey"))
+	value := strings.TrimSpace(c.PostForm("value"))
+
+	switch subaction {
+	case "save":
+		if len(editkey) > 0 && len(value) > 0 {
+			// Validate and clamp the numeric value.
+			val, err := strconv.Atoi(value)
+			if err == nil {
+				val = clampInt(val, minACMaxResults, maxACMaxResults)
+				catalog.SetSetting(autocompleteSettingsPrefix+editkey, strconv.Itoa(val))
+			}
+		}
+	case "reset":
+		if len(editkey) > 0 {
+			catalog.DeleteSetting(autocompleteSettingsPrefix + editkey)
 		}
 	}
 

@@ -80,6 +80,11 @@ private:
     QString computeFileHash(const QString &filePath);
     void verifyBinaryHash(const QString &serverHash);
     QString currentBinaryPath();
+    void fetchCommandsForCompleter();
+    void fetchAutocompleteSettings();
+    void updateAutocomplete();
+    void acceptAutocomplete();
+    bool eventFilter(QObject *obj, QEvent *event) override;
 
     MainWindow *mainWindow = nullptr;
     QDockWidget *dockWidget = nullptr;
@@ -91,6 +96,10 @@ private:
     QPlainTextEdit *editor = nullptr;
     QComboBox *editorMode = nullptr;
     QTabWidget *dockTabs = nullptr;
+    QListWidget *acPopup = nullptr;
+    QStringList cmdCommandList;
+    int maxCompleterResults = 12;
+    int minCompleterChars = 2;
     QString currentServerUrl;
     QString activePageId;
     bool connected = false;
