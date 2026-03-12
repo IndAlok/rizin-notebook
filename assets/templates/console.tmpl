@@ -10,6 +10,21 @@
   <style type="text/css">
     html, body { width: 100%; height: 100%; margin: 0 }
     .button-edit { width: 75px ! important; margin-top: 9px; margin-right: 9px; }
+    .nb-ac-wrap { position: relative; }
+    .nb-ac-dropdown {
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 99999;
+      background: white; border: 1px solid transparent; border-top: none;
+      border-radius: 0 0 4px 4px; max-height: 260px; overflow-y: auto;
+      display: none;
+    }
+    .nb-ac-item {
+      padding: 5px 10px; cursor: pointer;
+      font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .nb-ac-item:hover, .nb-ac-item.nb-ac-sel { font-weight: bold; }
+    .nb-ac-cmd { color: #1447e6; font-weight: bold; font-family: Inconsolata, monospace; margin-right: 4px; }
+    .nb-ac-args { color: #178236; font-style: italic; font-family: Inconsolata, monospace; margin-right: 6px; }
+    .nb-ac-summ { font-size: 12px; font-style: normal; opacity: .7; }
   </style>
   <script>window.NOTEBOOK_KB={{ keybindings }};</script>
   <script>window.NB_ROOT="{{ .root }}";</script>
@@ -31,11 +46,14 @@
     <div class="form-group">
       <button class="btn btn-primary" type="submit">Exec</button>
       <button class="btn" type="button" id="cancel-console" onclick="window.parent.postMessage({type:'iframe-remove'},'*')">Cancel</button>
-      <span style="color:#999;font-size:12px;margin-left:8px;">Ctrl+Enter to execute</span>
+      <span style="font-size:12px;margin-left:8px;opacity:.7;">Ctrl+Enter to execute</span>
     </div>
   </form>
   <script>
     var createdCellUnique = {{ if .cellUnique }}"{{ .cellUnique }}"{{ else }}""{{ end }};
+    var createdCellLineCount = {{ if .lineCount }}{{ .lineCount }}{{ else }}0{{ end }};
+    var createdCellWordCount = {{ if .wordCount }}{{ .wordCount }}{{ else }}0{{ end }};
+    var createdCellActionTime = {{ if .actionTime }}"{{ .actionTime }}"{{ else }}""{{ end }};
     var input = document.getElementById('cmdinput');
     NotebookShortcuts.annotate(document.getElementById('cancel-console'), 'cancel');
     NotebookShortcuts.bind([
@@ -55,6 +73,9 @@
           cellType:'command',
           cellUnique:createdCellUnique,
           content:input.value,
+          lineCount:createdCellLineCount,
+          wordCount:createdCellWordCount,
+          actionTime:createdCellActionTime,
           outputUrl:'{{ .root }}output/view/{{ .unique }}/' + createdCellUnique,
           deleteUrl:'{{ .root }}output/delete/{{ .unique }}/' + createdCellUnique
         }, '*');

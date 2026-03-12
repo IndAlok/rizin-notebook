@@ -42,6 +42,49 @@ Simple rule:
 - one `rz_notebook` build per Rizin version in use
 - one Cutter plugin if you want the Cutter dock
 
+## Screenshots
+
+Project screenshots are organized under `docs/images/`.
+
+### Web UI
+
+<figure>
+  <img src="docs/images/web-homepage.png" alt="Rizin Notebook" width="100%" />
+  <figcaption><em>Figure 1. Homepage view</em></figcaption>
+</figure>
+
+<figure>
+  <img src="docs/images/web-settings.png" alt="Rizin Notebook settings page" width="100%" />
+  <figcaption><em>Figure 2. Settings page for environment configuration, keyboard shortcuts, and server-side behavior.</em></figcaption>
+</figure>
+
+<figure>
+  <img src="docs/images/web-autocomplete.png" alt="Autocomplete suggestions for Rizin commands in the notebook web UI" width="100%" />
+  <figcaption><em>Figure 3. Command autocomplete in the web console, helping discover and complete Rizin commands quickly.</em></figcaption>
+</figure>
+
+<figure>
+  <img src="docs/images/web-command-help.png" alt="Command search and help modal in the notebook web UI" width="100%" />
+  <figcaption><em>Figure 4. Built-in command help and search modal for exploring command descriptions and arguments.</em></figcaption>
+</figure>
+
+### Plugin Integration
+
+<figure>
+  <img src="docs/images/rizin-plugin.png" alt="Rizin core plugin integration for Rizin Notebook" width="100%" />
+  <figcaption><em>Figure 5. Rizin core plugin integration, enabling notebook interaction directly from the Rizin shell.</em></figcaption>
+</figure>
+
+<figure>
+  <img src="docs/images/cutter-plugin-1.png" alt="Cutter plugin integration screenshot 1" width="100%" />
+  <figcaption><em>Figure 6. Cutter plugin integration view showing the notebook experience inside the Cutter interface.</em></figcaption>
+</figure>
+
+<figure>
+  <img src="docs/images/cutter-plugin-2.png" alt="Cutter plugin integration screenshot 2" width="100%" />
+  <figcaption><em>Figure 7. Additional Cutter plugin workflow view demonstrating possible notebook usage(s).</em></figcaption>
+</figure>
+
 ## Building the server
 
 ```bash

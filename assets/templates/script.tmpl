@@ -30,11 +30,14 @@
     <div class="form-group">
       <button class="btn btn-primary" type="submit">Run</button>
       <button class="btn" type="button" id="cancel-script" onclick="window.parent.postMessage({type:'iframe-remove'},'*')">Cancel</button>
-      <span style="color:#999;font-size:12px;margin-left:8px;">Ctrl+Enter to run</span>
+      <span style="font-size:12px;margin-left:8px;opacity:.7;">Ctrl+Enter to run</span>
     </div>
   </form>
   <script type="text/javascript">
     var createdCellUnique = {{ if .cellUnique }}"{{ .cellUnique }}"{{ else }}""{{ end }};
+    var createdCellLineCount = {{ if .lineCount }}{{ .lineCount }}{{ else }}0{{ end }};
+    var createdCellWordCount = {{ if .wordCount }}{{ .wordCount }}{{ else }}0{{ end }};
+    var createdCellActionTime = {{ if .actionTime }}"{{ .actionTime }}"{{ else }}""{{ end }};
     var editor = document.getElementById('codeeditor');
     var lines = document.getElementById('codelines');
     NotebookShortcuts.annotate(document.getElementById('cancel-script'), 'cancel');
@@ -78,6 +81,9 @@
           cellType:'script',
           cellUnique:createdCellUnique,
           content:editor.value,
+          lineCount:createdCellLineCount,
+          wordCount:createdCellWordCount,
+          actionTime:createdCellActionTime,
           outputUrl:'{{ .root }}output/view/{{ .unique }}/' + createdCellUnique,
           deleteUrl:'{{ .root }}output/delete/{{ .unique }}/' + createdCellUnique
         }, '*');

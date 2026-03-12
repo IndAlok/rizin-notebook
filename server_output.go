@@ -2,9 +2,29 @@ package main
 
 import (
 	"net/http"
+	"fmt"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+func formatExecutionDuration(duration time.Duration) string {
+	if duration < time.Millisecond {
+		return duration.Round(time.Microsecond).String()
+	}
+	if duration < time.Second {
+		return duration.Round(time.Millisecond).String()
+	}
+	return duration.Round(time.Millisecond).String()
+}
+
+func formatActionTime(unixTime int64) string {
+	if unixTime <= 0 {
+		return ""
+	}
+	return time.Unix(unixTime, 0).Local().Format("15:04")
+}
 
 func serverAddOutput(output *gin.RouterGroup) {
 
@@ -21,16 +41,31 @@ func serverAddOutput(output *gin.RouterGroup) {
 
 		cell, _ := catalog.GetCell(unique, eunique)
 		var data []byte
+		var lines, words int
+		var actionTime string
 		if cell != nil {
 			data = cell.Output
+			raw := string(data)
+			if len(raw) > 0 {
+				lines = strings.Count(raw, "\n") + 1
+				words = len(strings.Fields(raw))
+			}
+			if cell.Executed > 0 {
+				actionTime = formatActionTime(cell.Executed)
+			} else {
+				actionTime = formatActionTime(cell.Created)
+			}
 		}
 
 		// Convert ANSI escape sequences to HTML.
 		htmlOutput := toHtml(string(data))
 
 		c.HTML(200, "output.tmpl", gin.H{
-			"root":   webroot,
-			"output": string(htmlOutput),
+			"root":     webroot,
+			"output":   string(htmlOutput),
+			"lines":      lines,
+			"words":      words,
+			"actionTime": actionTime,
 		})
 	})
 
@@ -114,6 +149,7 @@ func serverAddOutput(output *gin.RouterGroup) {
 		}
 
 		// Execute the command.
+		started := time.Now()
 		result, err := rz.exec(command)
 		if err != nil {
 			c.HTML(200, "console.tmpl", gin.H{
@@ -138,12 +174,23 @@ func serverAddOutput(output *gin.RouterGroup) {
 		}
 
 		catalog.UpdateCellOutput(unique, eunique, []byte(result))
+		durationText := formatExecutionDuration(time.Since(started))
+		lineCount := 0
+		wordCount := 0
+		if result != "" {
+			lineCount = strings.Count(result, "\n") + 1
+			wordCount = len(strings.Fields(result))
+		}
+		actionTime := time.Now().Local().Format("15:04")
 
 		c.HTML(http.StatusOK, "console.tmpl", gin.H{
 			"root":       webroot,
 			"unique":     unique,
 			"command":    command,
-			"message":    "Command executed",
+			"message":    fmt.Sprintf("Command executed in %s", durationText),
+			"lineCount":  lineCount,
+			"wordCount":  wordCount,
+			"actionTime": actionTime,
 			"cellUnique": eunique,
 		})
 	})
@@ -182,6 +229,7 @@ func serverAddOutput(output *gin.RouterGroup) {
 
 		// Execute the script. rz may be nil if no pipe is open,
 		// which is handled by the JavaScript engine's rizin.cmd error.
+		started := time.Now()
 		result, err := notebook.jsvm.exec(script, rz)
 
 		if err != nil {
@@ -197,12 +245,23 @@ func serverAddOutput(output *gin.RouterGroup) {
 		}
 
 		catalog.UpdateCellOutput(unique, eunique, []byte(result))
+		durationText := formatExecutionDuration(time.Since(started))
+		lineCount := 0
+		wordCount := 0
+		if result != "" {
+			lineCount = strings.Count(result, "\n") + 1
+			wordCount = len(strings.Fields(result))
+		}
+		actionTime := time.Now().Local().Format("15:04")
 
 		c.HTML(http.StatusOK, "script.tmpl", gin.H{
 			"root":       webroot,
 			"unique":     unique,
 			"script":     script,
-			"message":    "Script executed",
+			"message":    fmt.Sprintf("Script executed in %s", durationText),
+			"lineCount":  lineCount,
+			"wordCount":  wordCount,
+			"actionTime": actionTime,
 			"cellUnique": eunique,
 		})
 	})

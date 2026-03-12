@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -153,11 +154,28 @@ func serverAddPage(root *gin.RouterGroup) {
 		cells, _ := catalog.ListCells(unique)
 		lines := make([]interface{}, len(cells))
 		for i, cell := range cells {
+			statsSource := cell.Content
+			if cell.Type == "command" || cell.Type == "script" {
+				statsSource = string(cell.Output)
+			}
+			lineCount := 0
+			wordCount := 0
+			if statsSource != "" {
+				lineCount = strings.Count(statsSource, "\n") + 1
+				wordCount = len(strings.Fields(statsSource))
+			}
+			actionTime := formatActionTime(cell.Created)
+			if cell.Executed > 0 {
+				actionTime = formatActionTime(cell.Executed)
+			}
 			lines[i] = gin.H{
-				"type":    cell.Type,
-				"unique":  cell.ID,
-				"command": cell.Content,
-				"script":  cell.Content,
+				"type":       cell.Type,
+				"unique":     cell.ID,
+				"command":    cell.Content,
+				"script":     cell.Content,
+				"lineCount":  lineCount,
+				"wordCount":  wordCount,
+				"actionTime": actionTime,
 			}
 		}
 

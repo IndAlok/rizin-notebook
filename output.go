@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -20,18 +21,34 @@ var tagMap = map[string]string{
 	"9": "strike",
 }
 
-// colMap maps ANSI 8-color codes to hex color values optimized for dark backgrounds.
+// colMap maps ANSI 8-color codes to CSS color names.
 var colMap = map[string]string{
-	"0": "#555555",
-	"1": "#e06c75",
+	"0": "white",
+	"1": "red",
+	"2": "green",
+	"3": "yellow",
+	"4": "blue",
+	"5": "magenta",
+	"6": "cyan",
+	"7": "black",
+	"9": "white",
+}
+
+// foregroundColorMap maps ANSI 8-color codes to contrast-safe colors for text
+// rendered on the notebook output background.
+var foregroundColorMap = map[string]string{
+	"0": "#d0d7de",
+	"1": "#ff9e64",
 	"2": "#98c379",
 	"3": "#e5c07b",
 	"4": "#61afef",
 	"5": "#c678dd",
 	"6": "#56b6c2",
-	"7": "#abb2bf",
-	"9": "#d4d4d4",
+	"7": "#f0f0f0",
+	"9": "#ffffff",
 }
+
+const outputBackgroundColor = "#4b4b4b"
 
 // color256 maps ANSI 256-color palette indices to hex color codes.
 var color256 = map[string]string{
@@ -305,6 +322,88 @@ var (
 	escapeRe = regexp.MustCompile(`^\[(;?\d+)+([A-Za-z])`)
 )
 
+func parseHexColor(hexColor string) (int, int, int, bool) {
+	if len(hexColor) != 7 || hexColor[0] != '#' {
+		return 0, 0, 0, false
+	}
+	r, err := strconv.ParseInt(hexColor[1:3], 16, 0)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	g, err := strconv.ParseInt(hexColor[3:5], 16, 0)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	b, err := strconv.ParseInt(hexColor[5:7], 16, 0)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	return int(r), int(g), int(b), true
+}
+
+func formatHexColor(red, green, blue int) string {
+	if red < 0 {
+		red = 0
+	} else if red > 255 {
+		red = 255
+	}
+	if green < 0 {
+		green = 0
+	} else if green > 255 {
+		green = 255
+	}
+	if blue < 0 {
+		blue = 0
+	} else if blue > 255 {
+		blue = 255
+	}
+	return fmt.Sprintf("#%02x%02x%02x", red, green, blue)
+}
+
+func channelLuminance(value int) float64 {
+	v := float64(value) / 255.0
+	if v <= 0.03928 {
+		return v / 12.92
+	}
+	return math.Pow((v+0.055)/1.055, 2.4)
+}
+
+func relativeLuminance(red, green, blue int) float64 {
+	return 0.2126*channelLuminance(red) + 0.7152*channelLuminance(green) + 0.0722*channelLuminance(blue)
+}
+
+func contrastRatio(colorA, colorB string) float64 {
+	r1, g1, b1, ok := parseHexColor(colorA)
+	if !ok {
+		return 21.0
+	}
+	r2, g2, b2, ok := parseHexColor(colorB)
+	if !ok {
+		return 21.0
+	}
+	l1 := relativeLuminance(r1, g1, b1)
+	l2 := relativeLuminance(r2, g2, b2)
+	if l1 < l2 {
+		l1, l2 = l2, l1
+	}
+	return (l1 + 0.05) / (l2 + 0.05)
+}
+
+func ensureReadableForeground(hexColor string) string {
+	red, green, blue, ok := parseHexColor(hexColor)
+	if !ok {
+		return hexColor
+	}
+	adjusted := hexColor
+	for i := 0; i < 12 && contrastRatio(adjusted, outputBackgroundColor) < 4.5; i++ {
+		red += (255 - red) * 35 / 100
+		green += (255 - green) * 35 / 100
+		blue += (255 - blue) * 35 / 100
+		adjusted = formatHexColor(red, green, blue)
+	}
+	return adjusted
+}
+
 func toCsv(output string) ([]byte, error) {
 	reader := csv.NewReader(strings.NewReader(output))
 	reader.Comma = ','
@@ -450,7 +549,7 @@ func toHtml(output string) []byte {
 				if string(found[1]) == "48" {
 					sb.WriteString(fmt.Sprintf("<span style=\"background-color: %s\">", hexColor))
 				} else {
-					sb.WriteString(fmt.Sprintf("<span style=\"color: %s\">", hexColor))
+					sb.WriteString(fmt.Sprintf("<span style=\"color: %s\">", ensureReadableForeground(hexColor)))
 				}
 			}
 			sb.WriteString(token[len(found[0]):])
@@ -475,7 +574,7 @@ func toHtml(output string) []byte {
 			if string(found[1]) == "48" {
 				sb.WriteString(fmt.Sprintf("<span style=\"background-color: #%02x%02x%02x\">", r, g, b))
 			} else {
-				sb.WriteString(fmt.Sprintf("<span style=\"color: #%02x%02x%02x\">", r, g, b))
+				sb.WriteString(fmt.Sprintf("<span style=\"color: %s\">", ensureReadableForeground(formatHexColor(r, g, b))))
 			}
 			sb.WriteString(token[len(found[0]):])
 			sb.WriteString("</span>")
@@ -518,7 +617,11 @@ func toHtml(output string) []byte {
 				if es[0] == '4' {
 					sb.WriteString(fmt.Sprintf("<span style=\"background-color: %s\">", clr))
 				} else {
-					sb.WriteString(fmt.Sprintf("<span style=\"color: %s\">", clr))
+					fgColor, ok := foregroundColorMap[string(es[1])]
+					if !ok {
+						fgColor = clr
+					}
+					sb.WriteString(fmt.Sprintf("<span style=\"color: %s\">", fgColor))
 				}
 				tags.WriteString("</span>")
 			} else if len(es) == 3 && es[0] == '1' && es[1] == '0' && es[2] != '8' {

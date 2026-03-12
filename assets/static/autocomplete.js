@@ -12,32 +12,6 @@
 (function (global, document) {
   "use strict";
 
-  /* ── Inject CSS ─────────────────────────────────────── */
-
-  var cssId = "nb-autocomplete-css";
-  if (!document.getElementById(cssId)) {
-    var style = document.createElement("style");
-    style.id = cssId;
-    style.textContent =
-      ".nb-ac-wrap { position: relative; }" +
-      ".nb-ac-dropdown {" +
-      "  position: absolute; top: 100%; left: 0; right: 0; z-index: 99999;" +
-      "  background: #fff; border: 1px solid #d0d0d0; border-top: none;" +
-      "  border-radius: 0 0 4px 4px; max-height: 260px; overflow-y: auto;" +
-      "  box-shadow: 0 4px 10px rgba(0,0,0,0.15); display: none;" +
-      "}" +
-      ".nb-ac-item {" +
-      "  padding: 5px 10px; cursor: pointer; border-bottom: 1px solid #f2f2f2;" +
-      "  font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" +
-      "}" +
-      ".nb-ac-item:last-child { border-bottom: none; }" +
-      ".nb-ac-item:hover, .nb-ac-item.nb-ac-sel { background: #f0f5ff; }" +
-      ".nb-ac-cmd { color: #1447e6; font-weight: bold; font-family: Inconsolata, monospace; margin-right: 4px; }" +
-      ".nb-ac-args { color: #178236; font-style: italic; font-family: Inconsolata, monospace; margin-right: 6px; }" +
-      ".nb-ac-summ { color: #888; font-size: 12px; font-style: normal; }";
-    document.head.appendChild(style);
-  }
-
   /* ── Command cache ──────────────────────────────────── */
 
   var _cache = null;

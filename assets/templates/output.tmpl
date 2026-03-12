@@ -20,30 +20,29 @@
       100% { visibility: visible; }
     }
     @font-face { font-family: 'Inconsolata'; src: URL('{{ .root }}static/inconsolata.ttf') format('truetype'); }
-    html, body { width: 100%; height: 100%; margin: 0; padding: 0; background-color: #1e1e1e; color: #d4d4d4; font-family: Inconsolata, 'Courier New', monospace; font-size: 13px; }
-    pre { width: 100%; margin: 4px; padding: 0; background-color: inherit; color: inherit; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word; }
+    html, body { width: 100%; height: 100%; background-color: #4b4b4b; color: #eeeeee; font-family: Inconsolata; }
+    pre { width: 100%; height: 100%; margin: 5px; background-color: inherit; color: inherit; line-height: 10px; }
     table {
-      border-collapse: collapse;
+      border-collapse: separate;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
       background-color: inherit;
       color: inherit;
-      width: 100%;
+      height: 100%;
       text-align: left;
-      font-size: 13px;
     }
     th {
       font-family: sans-serif;
       text-align: left;
-      background-color: #2d2d2d;
-      border-bottom: 2px solid #444;
     }
     td, th {
-      padding: 4px 12px;
+      padding: 3px 10px;
     }
     tbody tr {
-      border-bottom: 1px solid #333;
+      border-bottom: 1px solid #dddddd;
     }
     tbody tr:nth-of-type(even) {
-      background-color: #252525;
+      -webkit-backdrop-filter: invert(40%);
+      backdrop-filter: invert(40%);
     }
     tbody tr:last-of-type {
       border-bottom: 2px solid #009879;
@@ -51,9 +50,7 @@
   </style>
 </head>
 <body>
-{{ if .output }}  {{ .output | raw }}
-{{ else }}  <pre style="color:#666;font-style:italic;margin:8px;">No output</pre>
-{{ end }}
+  {{ .output | raw }}
   <script>
   (function(){
     function notifySize(){
