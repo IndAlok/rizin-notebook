@@ -56,15 +56,6 @@
     return String(text || "").replace(/\r\n?/g, "\n");
   }
 
-  function escapeHtml(text) {
-    return String(text)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
-
   function clampIndex(index) {
     if (!state.results.length) return -1;
     if (index < 0) return 0;
@@ -340,30 +331,32 @@
     return firstMark;
   }
 
-  function renderHighlightedText(text, ranges) {
+  function buildHighlightedTextFragment(text, ranges) {
+    var fragment = document.createDocumentFragment();
     var chars = Array.from(String(text || ""));
     var safeRanges = normalizeRanges(ranges, chars.length);
     if (!safeRanges.length) {
-      return escapeHtml(chars.join(""));
+      if (chars.length) {
+        fragment.appendChild(document.createTextNode(chars.join("")));
+      }
+      return fragment;
     }
 
-    var html = [];
     var cursor = 0;
     safeRanges.forEach(function (range) {
       if (cursor < range.start) {
-        html.push(escapeHtml(chars.slice(cursor, range.start).join("")));
+        fragment.appendChild(document.createTextNode(chars.slice(cursor, range.start).join("")));
       }
-      html.push(
-        '<mark class="nb-search-hit">' +
-          escapeHtml(chars.slice(range.start, range.end).join("")) +
-          "</mark>",
-      );
+      var mark = document.createElement("mark");
+      mark.className = "nb-search-hit";
+      mark.textContent = chars.slice(range.start, range.end).join("");
+      fragment.appendChild(mark);
       cursor = range.end;
     });
     if (cursor < chars.length) {
-      html.push(escapeHtml(chars.slice(cursor).join("")));
+      fragment.appendChild(document.createTextNode(chars.slice(cursor).join("")));
     }
-    return html.join("");
+    return fragment;
   }
 
   function resultSurfaceLabel(result) {
@@ -396,7 +389,7 @@
   function clearResults() {
     var list = resultsList();
     if (list) {
-      list.innerHTML = "";
+      list.replaceChildren();
     }
     state.results = [];
     state.activeIndex = -1;
@@ -552,7 +545,7 @@
     var list = resultsList();
     if (!list) return;
 
-    list.innerHTML = "";
+    list.replaceChildren();
     state.results = response.results || [];
     state.activeIndex = state.results.length ? 0 : -1;
 
@@ -568,6 +561,7 @@
       false,
     );
 
+    var fragment = document.createDocumentFragment();
     state.results.forEach(function (result, index) {
       var item = document.createElement("li");
       item.className = "nb-search-result-item";
@@ -585,41 +579,38 @@
 
       var meta = document.createElement("div");
       meta.className = "nb-search-result-meta";
-      meta.innerHTML =
-        '<span class="nb-search-badge' +
-        (result.surface === "output" ? " is-output" : "") +
-        '">' +
-        escapeHtml(resultSurfaceLabel(result)) +
-        "</span>" +
-        '<span class="nb-search-badge">' +
-        escapeHtml(resultCellTypeLabel(result)) +
-        "</span>" +
-        (response.mode === "fuzzy"
-          ? '<span class="nb-search-badge is-fuzzy">score ' +
-            escapeHtml(String(result.score || 0)) +
-            "</span>"
-          : "") +
-        "<span>cell " +
-        escapeHtml(String(Number(result.cell_position || 0) + 1)) +
-        "</span>" +
-        "<span>line " +
-        escapeHtml(String(result.line_number || 0)) +
-        "</span>" +
-        "<span>cols " +
-        escapeHtml(String(result.start_column || 0)) +
-        "-" +
-        escapeHtml(String(result.end_column || 0)) +
-        "</span>";
+      appendMetaBadge(meta, resultSurfaceLabel(result), "nb-search-badge" + (result.surface === "output" ? " is-output" : ""));
+      appendMetaBadge(meta, resultCellTypeLabel(result), "nb-search-badge");
+      if (response.mode === "fuzzy") {
+        appendMetaBadge(meta, "score " + String(result.score || 0), "nb-search-badge is-fuzzy");
+      }
+      appendMetaText(meta, "cell " + String(Number(result.cell_position || 0) + 1));
+      appendMetaText(meta, "line " + String(result.line_number || 0));
+      appendMetaText(meta, "cols " + String(result.start_column || 0) + "-" + String(result.end_column || 0));
       button.appendChild(meta);
 
       var line = document.createElement("div");
       line.className = "nb-search-result-line";
-      line.innerHTML = renderHighlightedText(result.line_text, result.ranges);
+      line.appendChild(buildHighlightedTextFragment(result.line_text, result.ranges));
       button.appendChild(line);
 
       item.appendChild(button);
-      list.appendChild(item);
+      fragment.appendChild(item);
     });
+    list.appendChild(fragment);
+  }
+
+  function appendMetaBadge(parent, text, className) {
+    var badge = document.createElement("span");
+    badge.className = className;
+    badge.textContent = text;
+    parent.appendChild(badge);
+  }
+
+  function appendMetaText(parent, text) {
+    var span = document.createElement("span");
+    span.textContent = text;
+    parent.appendChild(span);
   }
 
   function clearNotebookSearchHighlights() {

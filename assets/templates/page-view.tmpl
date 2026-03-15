@@ -366,7 +366,10 @@
         var button = document.createElement('button');
         button.className = 'btn float-right';
         button.type = 'button';
-        button.innerHTML = '<i class="icon icon-delete icon-height">Delete</i>';
+        var icon = document.createElement('i');
+        icon.className = 'icon icon-delete icon-height';
+        icon.textContent = 'Delete';
+        button.appendChild(icon);
         button.onclick = function() { deleteCell(data.deleteUrl, data.cellUnique); };
         inputGroup.appendChild(button);
 
@@ -388,15 +391,21 @@
 
         var footer = document.createElement('div');
         footer.className = 'cell-footer';
-        var footerParts = [];
-        if (data.lineCount) footerParts.push('<span>lines: ' + data.lineCount + '</span>');
-        if (data.wordCount) footerParts.push('<span>words: ' + data.wordCount + '</span>');
-        if (data.actionTime) footerParts.push('<span>time: ' + data.actionTime + '</span>');
-        footer.innerHTML = footerParts.join('');
+        var footerCount = 0;
+        function appendFooterMetric(label, value) {
+          if (!value) return;
+          var span = document.createElement('span');
+          span.textContent = label + ': ' + value;
+          footer.appendChild(span);
+          footerCount++;
+        }
+        appendFooterMetric('lines', data.lineCount);
+        appendFooterMetric('words', data.wordCount);
+        appendFooterMetric('time', data.actionTime);
 
         group.appendChild(inputGroup);
         group.appendChild(outputGroup);
-        if (footerParts.length > 0) {
+        if (footerCount > 0) {
           group.appendChild(footer);
         }
 
@@ -553,7 +562,7 @@
       function findCmd(element) {
         var dropdown = document.getElementById("dropdown-results");
         var results = document.getElementById("search-results");
-        results.innerHTML = "";
+        results.replaceChildren();
         var tokens = element.value.split(/\s+/);
         for (var i = 0, count = 0; i < rizinCmdsList.length; i++) {
           var key = rizinCmdsList[i];
