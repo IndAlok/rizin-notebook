@@ -144,6 +144,7 @@ func serverAddAPI(root *gin.RouterGroup) {
 	jsonAPI.GET("/status", apiJSONStatus)
 	jsonAPI.GET("/pages", apiJSONListPages)
 	jsonAPI.GET("/pages/:id", apiJSONGetPage)
+	jsonAPI.GET("/pages/:id/search", apiJSONSearchPage)
 	jsonAPI.POST("/pages", apiJSONCreatePage)
 	jsonAPI.DELETE("/pages/:id", apiJSONDeletePage)
 	jsonAPI.POST("/pages/:id/binary", apiJSONAttachBinary)

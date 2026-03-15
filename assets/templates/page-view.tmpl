@@ -54,9 +54,216 @@
       .modal-searchbar { width: calc(100% - 36px); }
       .modal-close { float: right; width: 32px; }
       .shortcut-hint { opacity: .7; font-size: 11px; margin-left: 6px; }
+      .nb-search-hit {
+        background: #ffe08a;
+        color: #111111;
+        border-radius: 2px;
+        padding: 0 1px;
+      }
+      @keyframes nb-search-pulse {
+        0% { box-shadow: 0 0 0 0 rgba(20, 71, 230, 0.18); }
+        100% { box-shadow: 0 0 0 8px rgba(20, 71, 230, 0); }
+      }
+      .nb-search-active-cell {
+        box-shadow: 0 0 0 2px rgba(20, 71, 230, 0.24);
+        border-radius: 8px;
+        animation: nb-search-pulse 0.55s ease-out 1;
+      }
+      .nb-search-toolbar-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .nb-search-toolbar-btn.is-active {
+        color: #1447e6;
+        border-color: rgba(20, 71, 230, 0.35);
+        background: rgba(20, 71, 230, 0.08);
+      }
+      .nb-search-panel {
+        position: fixed;
+        top: 72px;
+        right: 24px;
+        width: min(460px, calc(100vw - 24px));
+        max-height: calc(100vh - 96px);
+        display: none;
+        flex-direction: column;
+        background: linear-gradient(180deg, #fffdf7 0%, #ffffff 62%);
+        border: 1px solid rgba(20, 71, 230, 0.16);
+        border-radius: 14px;
+        box-shadow: 0 22px 50px rgba(17, 24, 39, 0.18);
+        overflow: hidden;
+        z-index: 1000;
+      }
+      .nb-search-panel.is-open { display: flex; }
+      .nb-search-head {
+        padding: 14px 14px 10px 14px;
+        background: linear-gradient(180deg, rgba(20, 71, 230, 0.08) 0%, rgba(255, 224, 138, 0.14) 100%);
+        border-bottom: 1px solid rgba(20, 71, 230, 0.1);
+      }
+      .nb-search-head-top {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .nb-search-title {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: 0.02em;
+      }
+      .nb-search-close {
+        margin-left: auto;
+        border: 0;
+        background: rgba(17, 24, 39, 0.06);
+        color: #111827;
+        border-radius: 999px;
+        width: 30px;
+        height: 30px;
+        cursor: pointer;
+      }
+      .nb-search-input-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .nb-search-query {
+        font-family: Inconsolata, monospace;
+      }
+      .nb-search-select {
+        font-size: 12px;
+      }
+      .nb-search-mode-row,
+      .nb-search-filter-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+      .nb-search-mode-label,
+      .nb-search-filter-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: rgba(17, 24, 39, 0.66);
+      }
+      .nb-search-toggle-group {
+        display: inline-flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .nb-search-toggle {
+        border: 1px solid rgba(20, 71, 230, 0.16);
+        background: rgba(255, 255, 255, 0.86);
+        color: #334155;
+        border-radius: 999px;
+        padding: 5px 11px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .nb-search-toggle.is-active {
+        background: #1447e6;
+        border-color: #1447e6;
+        color: #ffffff;
+      }
+      .nb-search-toggle.is-case {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .nb-search-toggle input {
+        margin: 0;
+      }
+      .nb-search-status {
+        padding: 10px 14px;
+        font-size: 12px;
+        color: rgba(17, 24, 39, 0.72);
+        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+        background: rgba(255, 255, 255, 0.72);
+      }
+      .nb-search-status.is-error {
+        color: #b42318;
+        background: rgba(254, 242, 242, 0.92);
+      }
+      .nb-search-results {
+        list-style: none;
+        margin: 0;
+        padding: 8px;
+        overflow-y: auto;
+        min-height: 140px;
+      }
+      .nb-search-result-item {
+        margin: 0;
+        padding: 0;
+      }
+      .nb-search-result {
+        width: 100%;
+        border: 1px solid transparent;
+        background: transparent;
+        text-align: left;
+        padding: 10px 12px;
+        cursor: pointer;
+        border-radius: 10px;
+      }
+      .nb-search-result:hover,
+      .nb-search-result.is-active {
+        background: rgba(20, 71, 230, 0.08);
+        border-color: rgba(20, 71, 230, 0.16);
+      }
+      .nb-search-result-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        margin-bottom: 6px;
+        font-size: 11px;
+        font-family: Inconsolata, monospace;
+      }
+      .nb-search-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(20, 71, 230, 0.08);
+        color: #1447e6;
+      }
+      .nb-search-badge.is-output {
+        background: rgba(232, 86, 0, 0.12);
+        color: #b54708;
+      }
+      .nb-search-badge.is-fuzzy {
+        background: rgba(23, 130, 54, 0.12);
+        color: #178236;
+      }
+      .nb-search-result-line {
+        font-family: Inconsolata, monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #0f172a;
+      }
+      @media (max-width: 720px) {
+        .nb-search-panel {
+          top: 12px;
+          right: 12px;
+          left: 12px;
+          width: auto;
+          max-height: calc(100vh - 24px);
+        }
+      }
     </style>
     <script>window.NOTEBOOK_KB={{ keybindings }};</script>
     <script src="{{ $root }}static/shortcuts.js"></script>
+    <script>
+      window.NB_NOTEBOOK_SEARCH = {
+        searchEndpoint: "{{ $root }}api/v1/json/pages/{{ $page.unique }}/search",
+        markdownEditBase: "{{ $root }}markdown/edit/{{ $page.unique }}/",
+        pageId: "{{ $page.unique }}",
+        storageKey: "nb:notebook-search:{{ $page.unique }}",
+        config: {{ search_config }}
+      };
+    </script>
+    <script src="{{ $root }}static/notebook-search.js"></script>
     <script>
       function resizeIframe(obj, padding) {
         try {
@@ -145,7 +352,10 @@
         inputGroup.className = 'input-group spacing-top';
 
         var code = document.createElement('code');
-        code.className = 'input-group-addon spacing-right spacing-left';
+        code.className = 'input-group-addon spacing-right spacing-left nb-searchable-code';
+        code.id = 'content-' + data.cellUnique;
+        code.setAttribute('data-cell-id', data.cellUnique);
+        code.setAttribute('data-cell-type', data.cellType || '');
         if (data.cellType === 'script') {
           code.style.display = 'block';
           code.style.whiteSpace = 'pre-wrap';
@@ -164,7 +374,8 @@
         outputGroup.className = 'input-group spacing-top';
 
         var iframe = document.createElement('iframe');
-        iframe.id = 'output-dyn-' + data.cellUnique;
+        iframe.id = 'output-' + data.cellUnique;
+        iframe.setAttribute('data-cell-id', data.cellUnique);
         iframe.setAttribute('frameborder', '0');
         iframe.setAttribute('marginheight', '0');
         iframe.setAttribute('marginwidth', '0');
@@ -379,16 +590,20 @@
         NotebookShortcuts.annotate(document.getElementById('nav-settings'), 'settings');
         NotebookShortcuts.annotate(document.getElementById('nav-new-page'), 'new_page');
         NotebookShortcuts.annotate(document.getElementById('toggle-pipe'), 'toggle_pipe');
+        NotebookShortcuts.annotate(document.getElementById('open-notebook-search'), 'search_notebook');
         {{ if $pipe }}NotebookShortcuts.annotate(document.getElementById('open-command-line'), 'new_command');{{ end }}
         NotebookShortcuts.annotate(document.getElementById('open-markdown'), 'new_markdown');
+        NotebookShortcuts.annotate(document.getElementById('open-script'), 'new_script');
         NotebookShortcuts.bind([
           { action: 'about', handler: function() { document.getElementById('nav-about').click(); } },
           { action: 'new_page', handler: function() { document.getElementById('nav-new-page').click(); } },
           { action: 'settings', handler: function() { document.getElementById('nav-settings').click(); } },
           { action: 'toggle_pipe', handler: function() { document.getElementById('toggle-pipe').click(); } },
+          { action: 'search_notebook', when: function() { return !isCommandHelpOpen(); }, handler: function() { openNotebookSearch(); } },
           { action: 'new_markdown', when: function() { return !isCommandHelpOpen(); }, handler: function() { newmd(); } },
           { action: 'new_script', when: function() { return !isCommandHelpOpen(); }, handler: function() { newsc(); } },
           { action: 'new_command', when: function() { return !isCommandHelpOpen() && {{ if $pipe }}true{{ else }}false{{ end }}; }, handler: function() { newcm(); } },
+          { action: 'cancel', when: function() { return isNotebookSearchOpen(); }, handler: function() { closeNotebookSearch(); } },
           { action: 'cancel', when: function() { return isCommandHelpOpen(); }, handler: function() { closeCmdHelp(); } }
         ]);
       });
@@ -420,6 +635,11 @@
         &nbsp;
         <a href="{{ $root }}api/v1/json/pages/{{ $page.unique }}/export" class="btn" download>Export .rznb</a>
         &nbsp;
+        <button class="btn nb-search-toolbar-btn" type="button" id="open-notebook-search">
+          <i class="icon icon-search"></i>
+          <span>Search</span>
+        </button>
+        &nbsp;
         <a href="{{ $root }}" class="btn btn-primary">Go Back</a>
       </section>
     </header>
@@ -446,7 +666,7 @@
 {{ if eq $line.type "markdown" }}
           <div class="cell-group" id="cell-{{ $line.unique }}">
           <div class="panel spacing-top resizer">
-            <iframe frameborder="0" marginheight="0" marginwidth="0" width="100%" scrolling="no" onload="handle(this)" class="panel-body no-borders md-heigh" src="{{ $root }}markdown/view/{{ $page.unique }}/{{ $line.unique }}"></iframe>
+            <iframe id="markdown-{{ $line.unique }}" data-cell-id="{{ $line.unique }}" frameborder="0" marginheight="0" marginwidth="0" width="100%" scrolling="no" onload="handle(this)" class="panel-body no-borders md-heigh" src="{{ $root }}markdown/view/{{ $page.unique }}/{{ $line.unique }}"></iframe>
           </div>
 {{ if or $line.lineCount $line.wordCount $line.actionTime }}
           <div class="cell-footer">
@@ -460,16 +680,16 @@
           <div class="cell-group" id="cell-{{ $line.unique }}">
           <div class="input-group spacing-top">
 {{ if eq $line.type "script" }}
-            <code style="display: block; white-space: pre-wrap;" class="input-group-addon spacing-right spacing-left">{{ $line.script }}</code>
+            <code id="content-{{ $line.unique }}" data-cell-id="{{ $line.unique }}" data-cell-type="{{ $line.type }}" style="display: block; white-space: pre-wrap;" class="input-group-addon spacing-right spacing-left nb-searchable-code">{{ $line.script }}</code>
 {{ else }}
-            <code class="input-group-addon spacing-right spacing-left">{{ $line.command }}</code>
+            <code id="content-{{ $line.unique }}" data-cell-id="{{ $line.unique }}" data-cell-type="{{ $line.type }}" class="input-group-addon spacing-right spacing-left nb-searchable-code">{{ $line.command }}</code>
 {{ end }}
             <button class="btn float-right" type="button" onclick="deleteCell('{{ $root }}output/delete/{{ $page.unique }}/{{ $line.unique }}', '{{ $line.unique }}')">
               <i class="icon icon-delete icon-height">Delete</i>
             </button>
           </div>
           <div class="input-group spacing-top">
-            <iframe id="output-{{ $i }}" frameborder="0" marginheight="0" marginwidth="0" width="100%" scrolling="no" onload="handle(this)" class="input-group-addon spacing-left md-heigh" src="{{ $root }}output/view/{{ $page.unique }}/{{ $line.unique }}"></iframe>
+            <iframe id="output-{{ $line.unique }}" data-cell-id="{{ $line.unique }}" frameborder="0" marginheight="0" marginwidth="0" width="100%" scrolling="no" onload="handle(this)" class="input-group-addon spacing-left md-heigh" src="{{ $root }}output/view/{{ $page.unique }}/{{ $line.unique }}"></iframe>
           </div>
 {{ if or $line.lineCount $line.wordCount $line.actionTime }}
           <div class="cell-footer">
@@ -494,6 +714,45 @@
           </div>
         </div>
       </div>
+      <aside id="notebook-search" class="nb-search-panel" aria-hidden="true">
+        <div class="nb-search-head">
+          <div class="nb-search-head-top">
+            <h3 class="nb-search-title">Notebook Search</h3>
+            <button class="nb-search-close" type="button" id="close-notebook-search" aria-label="Close notebook search">&times;</button>
+          </div>
+          <div class="nb-search-input-row">
+            <input class="form-input nb-search-query" id="notebook-search-focus" value="" placeholder="Search commands, scripts, outputs, and markdown"/>
+            <select class="form-select nb-search-select" id="notebook-search-surface" aria-label="Search surface">
+              <option value="all">All surfaces</option>
+              <option value="content">Input / source</option>
+              <option value="output">Outputs</option>
+            </select>
+          </div>
+          <div class="nb-search-mode-row">
+            <span class="nb-search-mode-label">Mode</span>
+            <div class="nb-search-toggle-group" id="notebook-search-mode-group">
+              <button class="nb-search-toggle" type="button" data-mode="literal">Literal</button>
+              <button class="nb-search-toggle" type="button" data-mode="regex">Regex</button>
+              <button class="nb-search-toggle" type="button" data-mode="fuzzy">Fuzzy</button>
+            </div>
+          </div>
+          <div class="nb-search-filter-row">
+            <span class="nb-search-filter-label">Filters</span>
+            <select class="form-select nb-search-select" id="notebook-search-cell-type" aria-label="Cell type filter">
+              <option value="all">All cell types</option>
+              <option value="command">Command cells</option>
+              <option value="script">Script cells</option>
+              <option value="markdown">Markdown cells</option>
+            </select>
+            <label class="nb-search-toggle is-case" for="notebook-search-case">
+              <input type="checkbox" id="notebook-search-case" />
+              <span>Case sensitive</span>
+            </label>
+          </div>
+        </div>
+        <div class="nb-search-status" id="notebook-search-status">Search commands, scripts, outputs, and markdown in this notebook.</div>
+        <ul class="nb-search-results" id="notebook-search-results"></ul>
+      </aside>
 {{ if $pipe }}
       <div id="command-help" class="modal modal-box">
         <div class="modal-content modal-search" onclick="" style="z-index: 999999;">

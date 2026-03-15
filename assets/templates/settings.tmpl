@@ -143,6 +143,35 @@
                     Reset to Defaults
                 </a>
             </p>
+            <p>
+                <h3 class="s-title">Notebook Search Settings</h3>
+                <div class="columns col-gapless">
+                    <div class="column col-1 col-btn spacing-left">
+{{ range $i, $ns := .ns_actions }}
+                        <a class="btn spacing-top" href="{{ $root }}settings/search/edit/{{ index $ns "name" }}">
+                            <i class="icon icon-edit">Edit</i>
+                        </a>
+{{ end }}
+                    </div>
+                    <div class="column col-3 spacing-left">
+{{ range $i, $ns := .ns_actions }}
+                        <div class="input-group">
+                            <span class="input-group-addon detail-size spacing-top height-32px">{{ index $ns "label" }}</span>
+                        </div>
+{{ end }}
+                    </div>
+                    <div class="column col-8">
+{{ range $i, $ns := .ns_actions }}
+                        <div class="input-group spacing-left">
+                            <span class="input-group-addon height-32px spacing-top">{{ index $ns "value_display" }}</span>
+                        </div>
+{{ end }}
+                    </div>
+                </div>
+                <a class="btn" href="{{ $root }}settings/search/reset">
+                    Reset to Defaults
+                </a>
+            </p>
         </section>
     </section>
 </body>

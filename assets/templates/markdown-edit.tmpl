@@ -11,6 +11,7 @@
     html, body { width: 100%; height: 100%; margin: 0 }
     .position-right { position: absolute; right: 0px; z-index: 99999; }
     .button-edit { width: 75px ! important; margin-top: 9px; margin-right: 9px; }
+    .CodeMirror .nb-search-hit { background: #ffe08a; color: #111111; border-radius: 2px; }
   </style>
   <script>window.NOTEBOOK_KB={{ keybindings }};</script>
   <script src="{{ .root }}static/shortcuts.js"></script>
@@ -30,6 +31,39 @@
   </div>
   <script src="{{ .root }}static/simplemde.min.js"></script>
   <script>
+  var markdownSearchMarks = [];
+  function clearMarkdownSearchMarks() {
+    while (markdownSearchMarks.length > 0) {
+      markdownSearchMarks.pop().clear();
+    }
+  }
+  function parseMarkdownSearchRanges(raw) {
+    if (!raw) return [];
+    return raw.split(',').map(function(part) {
+      var pieces = part.split(':');
+      return {
+        start: Number(pieces[0] || 0),
+        end: Number(pieces[1] || 0)
+      };
+    }).filter(function(range) {
+      return range.end > range.start;
+    });
+  }
+  function applyMarkdownSearchHighlight(editor, lineNumber, ranges) {
+    clearMarkdownSearchMarks();
+    if (!editor || lineNumber <= 0 || !ranges || !ranges.length) return;
+    var targetLine = lineNumber - 1;
+    for (var i = 0; i < ranges.length; i++) {
+      markdownSearchMarks.push(editor.markText(
+        { line: targetLine, ch: ranges[i].start },
+        { line: targetLine, ch: ranges[i].end },
+        { className: 'nb-search-hit' }
+      ));
+    }
+    editor.setCursor({ line: targetLine, ch: ranges[0].start });
+    editor.scrollIntoView({ line: targetLine, ch: ranges[0].start }, 140);
+    editor.focus();
+  }
   function editor() {
     var simplemde = new SimpleMDE({
         element: document.getElementById("input-body"),
@@ -41,6 +75,21 @@
         indentWithTabs: false,
         promptURLs: true,
         tabSize: 4,
+    });
+    var cm = simplemde.codemirror;
+    var params = new URLSearchParams(window.location.search);
+    applyMarkdownSearchHighlight(
+      cm,
+      Number(params.get('search_line') || 0),
+      parseMarkdownSearchRanges(params.get('search_ranges') || '')
+    );
+    window.addEventListener('message', function(event) {
+      if (!event.data || !event.data.type) return;
+      if (event.data.type === 'notebook-search-clear') {
+        clearMarkdownSearchMarks();
+      } else if (event.data.type === 'notebook-search-highlight-editor') {
+        applyMarkdownSearchHighlight(cm, Number(event.data.lineNumber || 0), event.data.ranges || []);
+      }
     });
     setTimeout(function() {
       var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);

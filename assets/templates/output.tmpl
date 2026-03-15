@@ -37,6 +37,12 @@
     td, th {
       padding: 3px 10px;
     }
+    .nb-search-hit {
+      background: #ffe08a;
+      color: #111111;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
     tbody tr {
       border-bottom: 1px solid #dddddd;
     }
@@ -50,13 +56,209 @@
   </style>
 </head>
 <body>
-  {{ .output | raw }}
+  <div id="output-root">{{ .output | raw }}</div>
   <script>
   (function(){
+    var rawOutput = {{ .raw_output | stringify }};
+
+    function normalizeText(text) {
+      return String(text || '').replace(/\r\n?/g, '\n');
+    }
     function notifySize(){
       var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
       if (window.parent !== window) window.parent.postMessage({type:'iframe-resize',height:h},'*');
     }
+    function unwrapMarks(root) {
+      var marks = root.querySelectorAll('mark.nb-search-hit');
+      for (var i = 0; i < marks.length; i++) {
+        var mark = marks[i];
+        var parent = mark.parentNode;
+        while (mark.firstChild) {
+          parent.insertBefore(mark.firstChild, mark);
+        }
+        parent.removeChild(mark);
+      }
+      root.normalize();
+    }
+    function codePointToCodeUnitOffset(text, codePointOffset) {
+      if (codePointOffset <= 0) return 0;
+      return Array.from(text).slice(0, codePointOffset).join('').length;
+    }
+    function childOffset(node) {
+      var offset = 0;
+      while (node && node.previousSibling) {
+        node = node.previousSibling;
+        offset++;
+      }
+      return offset;
+    }
+    function buildTextSegments(root) {
+      var segments = [];
+      var codePointIndex = 0;
+
+      function walk(node) {
+        if (!node) return;
+        if (node.nodeType === Node.TEXT_NODE) {
+          var length = Array.from(node.data || '').length;
+          if (!length) return;
+          segments.push({ type: 'text', node: node, start: codePointIndex, end: codePointIndex + length });
+          codePointIndex += length;
+          return;
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        if (node.tagName === 'BR') {
+          segments.push({
+            type: 'break',
+            parent: node.parentNode,
+            offset: childOffset(node),
+            start: codePointIndex,
+            end: codePointIndex + 1
+          });
+          codePointIndex++;
+          return;
+        }
+        for (var child = node.firstChild; child; child = child.nextSibling) {
+          walk(child);
+        }
+      }
+
+      walk(root);
+      return segments;
+    }
+    function boundaryBeforeSegment(segment) {
+      if (!segment) return null;
+      if (segment.type === 'break') {
+        return { container: segment.parent, offset: segment.offset };
+      }
+      return { container: segment.node, offset: 0 };
+    }
+    function boundaryAfterSegment(segment) {
+      if (!segment) return null;
+      if (segment.type === 'break') {
+        return { container: segment.parent, offset: segment.offset + 1 };
+      }
+      return {
+        container: segment.node,
+        offset: codePointToCodeUnitOffset(segment.node.data || '', segment.end - segment.start)
+      };
+    }
+    function locateBoundary(root, segments, absoluteOffset) {
+      if (!segments.length) {
+        return { container: root, offset: 0 };
+      }
+      for (var i = 0; i < segments.length; i++) {
+        var segment = segments[i];
+        if (absoluteOffset < segment.start) {
+          return boundaryBeforeSegment(segment);
+        }
+        if (segment.type === 'break') {
+          if (absoluteOffset === segment.start) {
+            return boundaryBeforeSegment(segment);
+          }
+          if (absoluteOffset === segment.end) {
+            return boundaryAfterSegment(segment);
+          }
+          continue;
+        }
+        if (absoluteOffset <= segment.end) {
+          return {
+            container: segment.node,
+            offset: codePointToCodeUnitOffset(segment.node.data || '', Math.max(0, absoluteOffset - segment.start))
+          };
+        }
+      }
+      return boundaryAfterSegment(segments[segments.length - 1]);
+    }
+    function wrapCodePointRange(root, start, end) {
+      var segments = buildTextSegments(root);
+      var startBoundary = locateBoundary(root, segments, start);
+      var endBoundary = locateBoundary(root, segments, end);
+      if (!startBoundary || !endBoundary) return null;
+
+      var range = document.createRange();
+      range.setStart(startBoundary.container, startBoundary.offset);
+      range.setEnd(endBoundary.container, endBoundary.offset);
+      if (range.collapsed) return null;
+
+      var mark = document.createElement('mark');
+      mark.className = 'nb-search-hit';
+      mark.appendChild(range.extractContents());
+      range.insertNode(mark);
+      return mark;
+    }
+    function normalizeRanges(ranges, length) {
+      if (!ranges || !ranges.length) return [];
+      return ranges.map(function(range) {
+        return {
+          start: Math.max(0, Math.min(length, Number(range.start) || 0)),
+          end: Math.max(0, Math.min(length, Number(range.end) || 0))
+        };
+      }).filter(function(range) {
+        return range.end > range.start;
+      });
+    }
+    function lineBounds(text, lineNumber) {
+      if (lineNumber <= 0) return null;
+      var chars = Array.from(normalizeText(text));
+      var start = 0;
+      var currentLine = 1;
+      while (start < chars.length && currentLine < lineNumber) {
+        if (chars[start] === '\n') {
+          currentLine++;
+        }
+        start++;
+      }
+      if (currentLine !== lineNumber) return null;
+      var end = start;
+      while (end < chars.length && chars[end] !== '\n') {
+        end++;
+      }
+      return { start: start, end: end };
+    }
+    function highlightSearchResult(message) {
+      var root = document.getElementById('output-root');
+      if (!root) return;
+
+      unwrapMarks(root);
+
+      var bounds = lineBounds(rawOutput, Number(message.lineNumber || 0));
+      if (!bounds) return;
+
+      var ranges = normalizeRanges(message.ranges || [], bounds.end - bounds.start).sort(function(a, b) {
+        return (b.start || 0) - (a.start || 0);
+      });
+      var firstMark = null;
+      for (var i = 0; i < ranges.length; i++) {
+        var range = ranges[i];
+        var start = bounds.start + Number(range.start || 0);
+        var end = bounds.start + Number(range.end || 0);
+        if (end <= start) continue;
+        var mark = wrapCodePointRange(root, start, end);
+        if (mark) {
+          firstMark = mark;
+        }
+      }
+
+      if (firstMark && firstMark.scrollIntoView) {
+        firstMark.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+      notifySize();
+    }
+
+    window.addEventListener('message', function(event) {
+      if (!event.data || !event.data.type) return;
+      if (event.data.type === 'notebook-search-clear') {
+        var root = document.getElementById('output-root');
+        if (root) {
+          unwrapMarks(root);
+          notifySize();
+        }
+      } else if (event.data.type === 'notebook-search-highlight') {
+        highlightSearchResult(event.data);
+      }
+    });
+
+    rawOutput = normalizeText(rawOutput);
     if (document.readyState === 'complete') notifySize();
     else window.addEventListener('load', notifySize);
     setTimeout(notifySize, 100);

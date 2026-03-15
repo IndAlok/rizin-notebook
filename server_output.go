@@ -43,12 +43,13 @@ func serverAddOutput(output *gin.RouterGroup) {
 		var data []byte
 		var lines, words int
 		var actionTime string
+		var visibleOutput string
 		if cell != nil {
 			data = cell.Output
-			raw := string(data)
-			if len(raw) > 0 {
-				lines = strings.Count(raw, "\n") + 1
-				words = len(strings.Fields(raw))
+			visibleOutput = outputVisibleText(string(data))
+			if len(visibleOutput) > 0 {
+				lines = strings.Count(visibleOutput, "\n") + 1
+				words = len(strings.Fields(visibleOutput))
 			}
 			if cell.Executed > 0 {
 				actionTime = formatActionTime(cell.Executed)
@@ -61,8 +62,9 @@ func serverAddOutput(output *gin.RouterGroup) {
 		htmlOutput := toHtml(string(data))
 
 		c.HTML(200, "output.tmpl", gin.H{
-			"root":     webroot,
-			"output":   string(htmlOutput),
+			"root":       webroot,
+			"output":     string(htmlOutput),
+			"raw_output": visibleOutput,
 			"lines":      lines,
 			"words":      words,
 			"actionTime": actionTime,

@@ -320,6 +320,8 @@ var (
 
 	// escapeRe matches generic ANSI escape sequences with numeric parameters.
 	escapeRe = regexp.MustCompile(`^\[(;?\d+)+([A-Za-z])`)
+
+	outputHTMLTagRe = regexp.MustCompile(`(?s)<[^>]+>`)
 )
 
 func parseHexColor(hexColor string) (int, int, int, bool) {
@@ -636,4 +638,15 @@ func toHtml(output string) []byte {
 
 	result := strings.ReplaceAll(sb.String(), "\n", "<br>\n")
 	return []byte("<pre>" + result + "</pre>")
+}
+
+func outputVisibleText(output string) string {
+	if output == "" {
+		return ""
+	}
+	text := string(toHtml(output))
+	text = strings.ReplaceAll(text, "<br>\n", "\n")
+	text = strings.ReplaceAll(text, "<br>", "\n")
+	text = outputHTMLTagRe.ReplaceAllString(text, "")
+	return html.UnescapeString(text)
 }

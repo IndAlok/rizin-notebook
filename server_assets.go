@@ -41,6 +41,9 @@ var functionMap = template.FuncMap{
 	"autocomplete_config": func() template.JS {
 		return getAutocompleteConfigJSON()
 	},
+	"search_config": func() template.JS {
+		return getNotebookSearchConfigJSON()
+	},
 }
 
 /* ─── Custom template render ─────────────────────────────── */
