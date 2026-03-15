@@ -50,7 +50,7 @@ Project screenshots are organized under `docs/images/`.
 
 <figure>
   <img src="docs/images/web-homepage.png" alt="Rizin Notebook" width="100%" />
-  <figcaption><em>Figure 1. Homepage view</em></figcaption>
+  <figcaption><em>Figure 1. Homepage view (with cell & scope based search, supporting multiple modes.)</em></figcaption>
 </figure>
 
 <figure>
