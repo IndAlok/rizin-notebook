@@ -3,18 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
-	"strings"
 	"sync"
 )
 
-const (
-	CONFIG_FILE = "config.json"
-	KB_INDEX    = "Index"
-	KB_PAGE     = "Page"
-)
+// ConfigFile is the filename for the notebook configuration JSON file.
+const ConfigFile = "config.json"
 
 type NotebookConfig struct {
 	Environment map[string]string `json:"environment"`
@@ -22,31 +17,27 @@ type NotebookConfig struct {
 	mutex       sync.Mutex
 }
 
-func getValue(kmap map[string]string, action, defkey string) string {
-	if kmap == nil {
-		return defkey
-	}
-	if value, ok := kmap[action]; ok && len(value) > 0 {
-		return value
-	}
-	return defkey
-}
-
 func NewNotebookConfig(folder string) *NotebookConfig {
-	var config = &NotebookConfig{}
-	config.filename = path.Join(folder, CONFIG_FILE)
-	bytes, err := ioutil.ReadFile(config.filename)
+	nc := &NotebookConfig{}
+	nc.filename = path.Join(folder, ConfigFile)
+
+	bytes, err := os.ReadFile(nc.filename)
 	if err == nil {
-		json.Unmarshal(bytes, config)
-	}
-	if config.Environment == nil {
-		config.Environment = map[string]string{}
+		if jsonErr := json.Unmarshal(bytes, nc); jsonErr != nil {
+			fmt.Printf("warning: failed to parse config file: %v\n", jsonErr)
+		}
 	}
 
-	if value, ok := config.Environment["RIZIN_PATH"]; !ok || len(value) < 1 {
-		config.Environment["RIZIN_PATH"] = os.Getenv("RIZIN_PATH")
+	if nc.Environment == nil {
+		nc.Environment = map[string]string{}
 	}
-	return config
+
+	// Auto-populate RIZIN_PATH from the OS environment if not configured.
+	if value, ok := nc.Environment["RIZIN_PATH"]; !ok || len(value) < 1 {
+		nc.Environment["RIZIN_PATH"] = os.Getenv("RIZIN_PATH")
+	}
+
+	return nc
 }
 
 func (nc *NotebookConfig) UpdateEnvironment() {
@@ -54,31 +45,5 @@ func (nc *NotebookConfig) UpdateEnvironment() {
 	defer nc.mutex.Unlock()
 	for key, value := range nc.Environment {
 		os.Setenv(key, value)
-	}
-}
-
-func (nc *NotebookConfig) DelEnvironment(key string) {
-	nc.mutex.Lock()
-	defer nc.mutex.Unlock()
-	key = strings.TrimSpace(key)
-	delete(nc.Environment, key)
-	os.Unsetenv(key)
-}
-
-func (nc *NotebookConfig) SetEnvironment(key, value string) {
-	nc.mutex.Lock()
-	defer nc.mutex.Unlock()
-	value = strings.TrimSpace(value)
-	key = strings.TrimSpace(key)
-	os.Setenv(key, value)
-	nc.Environment[key] = value
-}
-
-func (nc *NotebookConfig) Save() {
-	nc.mutex.Lock()
-	defer nc.mutex.Unlock()
-	bytes, _ := json.MarshalIndent(nc, "", "\t")
-	if err := ioutil.WriteFile(nc.filename, bytes, 0644); err != nil {
-		fmt.Println(err)
 	}
 }

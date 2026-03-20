@@ -1,174 +1,409 @@
-name: Build and Release
-on:
-  push:
-    branches: main
+name: Build Artifacts
 
-# Automatically cancel any previous workflow on new push.
+on:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publish a GitHub release"
+        required: false
+        default: false
+        type: boolean
+      release_tag:
+        description: "Release tag or version label (required if publish_release=true)"
+        required: false
+        type: string
+      release_name:
+        description: "Release name override"
+        required: false
+        type: string
+  push:
+    tags:
+      - "v*"
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
-  build:
+  # ── Go server binaries (6 platform combos) ──────────────────────────────
+
+  build-server:
+    name: Server ${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        # Include amd64 on all platforms.
-        goos: [windows, freebsd, openbsd, linux, dragonfly, darwin]
-        goarch: [amd64, 386]
-        exclude:
-          # Exclude i386 on darwin and dragonfly
-          # because they are not supported by go.
-          - goarch: 386
-            goos: dragonfly
-          - goarch: 386
-            goos: darwin
         include:
-          # BEIGIN MacOS ARM64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
           - goos: darwin
             goarch: arm64
-          # END MacOS ARM64
-          # BEGIN Linux ARM 5 6 7
-          - goos: linux
-            goarch: arm
-            goarm: 7
-          - goos: linux
-            goarch: arm
-            goarm: 6
-          - goos: linux
-            goarch: arm
-            goarm: 5
-          # END Linux ARM 5 6 7
-          # BEGIN Android ARM 8
-          - goos: android
-            goarch: arm64
-          # END Android ARM 8
-          # Windows ARM 7
-          - goos: windows
-            goarch: arm
-            goarm: 7
-          # BEGIN Other architectures
-          # BEGIN riscv64 & ARM64
-          - goos: linux
-            goarch: arm64
-          - goos: linux
-            goarch: riscv64
-          # END riscv64 & ARM64
-          # BEGIN MIPS
-          - goos: linux
-            goarch: mips64
-          - goos: linux
-            goarch: mips64le
-          - goos: linux
-            goarch: mipsle
-          - goos: linux
-            goarch: mips
-          # END MIPS
-          # BEGIN PPC
-          - goos: linux
-            goarch: ppc64
-          - goos: linux
-            goarch: ppc64le
-          # END PPC
-          # BEGIN FreeBSD ARM
-          - goos: freebsd
-            goarch: arm64
-          - goos: freebsd
-            goarch: arm
-            goarm: 7
-          # END FreeBSD ARM
-          # BEGIN S390X
-          - goos: linux
-            goarch: s390x
-          # END S390X
-          # BEGIN LoongArch64
-          - goos: linux
-            goarch: loong64
-          # END LoongArch64
-          # END Other architectures
-          # BEGIN OPENBSD ARM
-          - goos: openbsd
-            goarch: arm64
-          - goos: openbsd
-            goarch: arm
-            goarm: 7
-          # END OPENBSD ARM
-      fail-fast: false
 
-    runs-on: ubuntu-latest
     env:
       GOOS: ${{ matrix.goos }}
       GOARCH: ${{ matrix.goarch }}
-      GOARM: ${{ matrix.goarm }}
       CGO_ENABLED: 0
-    steps:
-      - name: Checkout codebase
-        uses: actions/checkout@v4
 
-      - name: Show workflow information 
-        id: get_filename
-        run: |
-          export _NAME=$(jq ".[\"$GOOS-$GOARCH$GOARM$GOMIPS\"].friendlyName" -r < .github/build/friendly-filenames.json)
-          echo "GOOS: $GOOS, GOARCH: $GOARCH, GOARM: $GOARM, GOMIPS: $GOMIPS, RELEASE_NAME: $_NAME"
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ^1.23
-          cache: false
-
-      - name: Get project dependencies
-        run: go mod download
- 
-      - name: Build notebook
-        run: go build -o rz-notebook-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }} -ldflags "-X main.NBVERSION=$(git rev-list -1 HEAD)"
-    
-      - name: Build Mips softfloat
-        if: matrix.goarch == 'mips' || matrix.goarch == 'mipsle'
-        run: GOMIPS=softfloat go build -o rz-notebook-${{ matrix.goos }}-${{ matrix.goarch }} -ldflags "-X main.NBVERSION=$(git rev-list -1 HEAD)"
-
-      - name: Rename Windows
-        if: matrix.goos == 'windows'
-        run: mv rz-notebook-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }} rz-notebook-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }}.exe
-
-      - name: Upload files to Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: rz-notebook-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }}
-          path: ./rz-notebook-${{ matrix.goos }}-*
-
-  create_release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    needs: [build]
     steps:
       - uses: actions/checkout@v4
-      - name: Set variables
-        id: vars
-        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: true
+
+      - run: go mod download
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $out = "rizin-notebook-${{ matrix.goos }}-${{ matrix.goarch }}"
+          $version = (git rev-parse --short HEAD).Trim()
+          go build -o $out -ldflags "-X main.NBVERSION=$version"
+          if ($env:GOOS -eq "windows") {
+            Rename-Item -Path $out -NewName "$out.exe"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rizin-notebook-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: rizin-notebook-${{ matrix.goos }}-${{ matrix.goarch }}*
+          if-no-files-found: error
+
+  # ── Rizin core plugin (rizin-notebook-plugin) — Windows ─────────────────
+
+  build-rizin-plugin-windows:
+    name: rizin-notebook-plugin (windows-x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify plugin sources
+        shell: pwsh
+        run: |
+          if (!(Test-Path "rizin-notebook-plugin\CMakeLists.txt")) {
+            Write-Host "::error::rizin-notebook-plugin sources are missing from repository checkout. Commit the rizin-notebook-plugin directory."
+            Get-ChildItem -Path .
+            exit 1
+          }
+
+      - name: Install vcpkg packages
+        run: vcpkg install protobuf-c:x64-windows
+
+      - name: Download rizin SDK
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/rizinorg/rizin/releases/download/v0.8.2/rizin-windows-shared64-v0.8.2.zip" `
+            -OutFile rizin.zip
+          7z x rizin.zip -orizin-sdk
+          $cfg = Get-ChildItem -Path rizin-sdk -Recurse -Filter "RizinConfig.cmake" |
+            Select-Object -First 1
+          if (!$cfg) {
+            Write-Host "::error::RizinConfig.cmake not found in rizin SDK"
+            Get-ChildItem -Path rizin-sdk -Recurse | Select-Object -First 80 |
+              ForEach-Object { Write-Host $_.FullName }
+            exit 1
+          }
+          $prefix = $cfg.Directory.Parent.Parent.Parent.FullName
+          Write-Host "Rizin prefix: $prefix"
+          Add-Content -Path $env:GITHUB_ENV -Value "RIZIN_PREFIX=$prefix"
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S rizin-notebook-plugin -B rizin-notebook-plugin/build `
+            "-DRizin_ROOT=$env:RIZIN_PREFIX" `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" `
+            -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        run: cmake --build rizin-notebook-plugin/build --config Release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rizin-notebook-plugin-windows-x64
+          path: rizin-notebook-plugin/build/Release/rz_notebook.dll
+          if-no-files-found: error
+
+  # ── Rizin core plugin (rizin-notebook-plugin) — Linux ───────────────────
+
+  build-rizin-plugin-linux:
+    name: rizin-notebook-plugin (linux-x64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify plugin sources
+        run: |
+          test -f rizin-notebook-plugin/CMakeLists.txt || {
+            echo "::error::rizin-notebook-plugin sources are missing from repository checkout. Commit the rizin-notebook-plugin directory.";
+            ls -la;
+            exit 1;
+          }
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build pkg-config \
+            libprotobuf-c-dev libcurl4-openssl-dev
+
+      - name: Build and install rizin
+        run: |
+          curl -L -o rizin-src.tar.xz \
+            "https://github.com/rizinorg/rizin/releases/download/v0.8.2/rizin-src-v0.8.2.tar.xz"
+          mkdir rizin-sdk-src
+          tar xf rizin-src.tar.xz -C rizin-sdk-src --strip-components=1
+          cd rizin-sdk-src
+          meson setup build --prefix=/usr -Ddefault_library=shared
+          ninja -C build
+          sudo ninja -C build install
+          sudo ldconfig
+
+      - name: Configure and build
+        run: |
+          cmake -S rizin-notebook-plugin -B rizin-notebook-plugin/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build rizin-notebook-plugin/build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rizin-notebook-plugin-linux-x64
+          path: rizin-notebook-plugin/build/librz_notebook.so
+          if-no-files-found: error
+
+  # ── Cutter plugin (cutter-notebook-plugin) — Windows ──────────────────
+
+  build-cutter-plugin-windows:
+    name: cutter-notebook-plugin (windows-x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify plugin sources
+        shell: pwsh
+        run: |
+          if (!(Test-Path "cutter-notebook-plugin\CMakeLists.txt")) {
+            Write-Host "::error::cutter-notebook-plugin sources are missing from repository checkout."
+            Get-ChildItem -Path .
+            exit 1
+          }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Qt SDK
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install aqtinstall
+          $qtOut = Join-Path $env:RUNNER_TEMP "Qt"
+          python -m aqt install-qt windows desktop 6.7.2 win64_msvc2019_64 --outputdir $qtOut
+          $qtDir = Join-Path $qtOut "6.7.2\msvc2019_64"
+          if (!(Test-Path $qtDir)) {
+            Write-Host "::error::Qt SDK install failed: $qtDir not found"
+            exit 1
+          }
+          Add-Content -Path $env:GITHUB_ENV -Value "QT_DIR=$qtDir"
+
+      - name: Download Cutter SDK
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/rizinorg/cutter/releases/download/v2.4.1/Cutter-v2.4.1-Windows-x86_64.zip" `
+            -OutFile cutter.zip
+          7z x cutter.zip -oCutter
+          $cutterRoot = Get-ChildItem -Path Cutter -Directory | Select-Object -First 1
+          if (!$cutterRoot) {
+            Write-Host "::error::Failed to extract Cutter SDK"
+            exit 1
+          }
+          $hdr = Join-Path $cutterRoot.FullName "include\cutter\plugins\CutterPlugin.h"
+          if (!(Test-Path $hdr)) {
+            Write-Host "::error::Invalid Cutter SDK root: $($cutterRoot.FullName)"
+            exit 1
+          }
+          Add-Content -Path $env:GITHUB_ENV -Value "CUTTER_DIR=$($cutterRoot.FullName)"
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S cutter-notebook-plugin -B cutter-notebook-plugin/build `
+            "-DCutter_DIR=$env:CUTTER_DIR" `
+            "-DCMAKE_PREFIX_PATH=$env:QT_DIR" `
+            -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        run: cmake --build cutter-notebook-plugin/build --config Release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cutter-notebook-plugin-windows-x64
+          path: |
+            cutter-notebook-plugin/build/Release/CutterNotebookPlugin.dll
+            cutter-notebook-plugin/build/Release/CutterNotebookPlugin.pdb
+          if-no-files-found: error
+
+  # ── Package plugin sources ─────────────────────────────────────────────
+
+  package-sources:
+    name: Package plugin sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify source directories
+        run: |
+          test -d rizin-notebook-plugin || { echo "::error::Missing rizin-notebook-plugin directory"; exit 1; }
+          test -d cutter-notebook-plugin || { echo "::error::Missing cutter-notebook-plugin directory"; exit 1; }
+
+      - name: Create archives
+        run: |
+          zip -r rizin-notebook-plugin-source.zip rizin-notebook-plugin proto
+          zip -r cutter-notebook-plugin-source.zip cutter-notebook-plugin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-sources
+          path: |
+            rizin-notebook-plugin-source.zip
+            cutter-notebook-plugin-source.zip
+          if-no-files-found: error
+
+  # ── Package checksums manifest ───────────────────────────────────────
+
+  package-checksums:
+    name: Package checksums
+    runs-on: ubuntu-latest
+    needs:
+      - build-server
+      - build-rizin-plugin-windows
+      - build-rizin-plugin-linux
+      - build-cutter-plugin-windows
+      - package-sources
+    steps:
       - uses: actions/download-artifact@v4
-      - name: List downloaded files
-        run: ls -lah rz-notebook-*/*
 
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/') || contains(github.ref, 'test-release')
-        uses: softprops/action-gh-release@v2
+      - name: Generate SHA256SUMS
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path . -Recurse -File |
+            Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
+            Sort-Object FullName
+
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $relative = [System.IO.Path]::GetRelativePath((Get-Location).Path, $file.FullName) -replace '\\', '/'
+            "$hash  $relative"
+          }
+
+          $lines | Set-Content -Path SHA256SUMS.txt -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-checksums
+          path: SHA256SUMS.txt
+          if-no-files-found: error
+
+  # ── Publish GitHub Release ─────────────────────────────────────────────
+
+  release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    needs:
+      - build-server
+      - build-rizin-plugin-windows
+      - build-rizin-plugin-linux
+      - build-cutter-plugin-windows
+      - package-sources
+      - package-checksums
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish_release)
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Resolve tag and name
+        id: meta
+        shell: pwsh
+        env:
+          RAW_RELEASE_TAG: ${{ inputs.release_tag }}
+          RAW_RELEASE_NAME: ${{ inputs.release_name }}
+        run: |
+          $tag = ""
+          $name = ""
+          $targetCommitish = ""
+
+          if ($env:GITHUB_EVENT_NAME -eq "workflow_dispatch") {
+            $requestedTag = [string]$env:RAW_RELEASE_TAG
+            $requestedTag = $requestedTag.Trim()
+            if ([string]::IsNullOrWhiteSpace($requestedTag)) {
+              Write-Error "release_tag is required when publish_release=true"
+              exit 1
+            }
+
+            $name = ([string]$env:RAW_RELEASE_NAME).Trim()
+            if ([string]::IsNullOrWhiteSpace($name)) {
+              $name = $requestedTag
+            }
+
+            $normalizedTag = $requestedTag
+            if (-not $normalizedTag.StartsWith("v")) {
+              $normalizedTag = "v$normalizedTag"
+            }
+
+            $normalizedTag = [regex]::Replace($normalizedTag.Trim(), "\s+", "-")
+            $normalizedTag = [regex]::Replace($normalizedTag, "[^0-9A-Za-z._/-]", "-")
+            $normalizedTag = [regex]::Replace($normalizedTag, "-{2,}", "-")
+            $normalizedTag = $normalizedTag.Trim('-')
+
+            if ([string]::IsNullOrWhiteSpace($normalizedTag) -or $normalizedTag -eq "v") {
+              Write-Error "release_tag could not be normalized into a valid Git tag"
+              exit 1
+            }
+
+            $tag = $normalizedTag
+            $targetCommitish = $env:GITHUB_SHA
+          }
+          else {
+            $tag = $env:GITHUB_REF_NAME
+            $name = $tag
+          }
+
+          $prerelease = $false
+          if ($tag -match "(?i)(alpha|beta|rc|preview|pre)" -or $name -match "(?i)(alpha|beta|rc|preview|pre)") {
+            $prerelease = $true
+          }
+
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "name=$name" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "target_commitish=$targetCommitish" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "prerelease=$($prerelease.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          name: Release ${{ github.ref }}
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.name }}
+          target_commitish: ${{ steps.meta.outputs.target_commitish }}
           generate_release_notes: true
-          draft: true
-          prerelease: false
-          files: |
-            ./rz-notebook-*/*
-
-      - name: Create Nightly
-        uses: softprops/action-gh-release@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: Nightly (${{ steps.vars.outputs.sha_short }})
           draft: false
-          tag_name: nightly-${{ steps.vars.outputs.sha_short }}
-          generate_release_notes: true
-          prerelease: true
+          prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
           files: |
-            ./rz-notebook-*/*
+            rizin-notebook-linux-*/*
+            rizin-notebook-windows-*/*
+            rizin-notebook-darwin-*/*
+            rizin-notebook-plugin-*/*
+            cutter-notebook-plugin-*/*
+            plugin-sources/*
+            release-checksums/*

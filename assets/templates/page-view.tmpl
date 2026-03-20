@@ -15,6 +15,15 @@
       .icon-height { height: 20px; }
       .title-margin { margin-top: auto; margin-bottom: auto; margin-right: 10px; }
       .md-heigh { height: 64px; }
+      .cell-group { position: relative; margin-bottom: 2px; }
+      .cell-footer {
+        font-size: 11px;
+        text-align: right;
+        padding: 3px 8px 0 8px;
+        font-family: Inconsolata, monospace;
+        opacity: .7;
+      }
+      .cell-footer span { margin-left: 12px; }
       .pipe { color: #e85600; border-color: #e85600; }
       .pipe:hover { background: #e85600; border-color: #e85600; }
       iframe { border: 0px; width: 100%; height: 100% }
@@ -44,23 +53,379 @@
       .modal-entry-text { min-width: 200px; display: inline-block; }
       .modal-searchbar { width: calc(100% - 36px); }
       .modal-close { float: right; width: 32px; }
-    </style>
-    <script>
-      function handle(obj) {
-        obj.style.height = (obj.contentWindow.document.documentElement.scrollHeight + 20) + 'px';
-        if (obj.contentWindow.location.href.indexOf("/deleted") > 0) {
-          obj.parentNode.parentNode.removeChild(obj.parentNode);
+      .shortcut-hint { opacity: .7; font-size: 11px; margin-left: 6px; }
+      .nb-search-hit {
+        background: #ffe08a;
+        color: #111111;
+        border-radius: 2px;
+        padding: 0 1px;
+      }
+      @keyframes nb-search-pulse {
+        0% { box-shadow: 0 0 0 0 rgba(20, 71, 230, 0.18); }
+        100% { box-shadow: 0 0 0 8px rgba(20, 71, 230, 0); }
+      }
+      .nb-search-active-cell {
+        box-shadow: 0 0 0 2px rgba(20, 71, 230, 0.24);
+        border-radius: 8px;
+        animation: nb-search-pulse 0.55s ease-out 1;
+      }
+      .nb-search-toolbar-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .nb-search-toolbar-btn.is-active {
+        color: #1447e6;
+        border-color: rgba(20, 71, 230, 0.35);
+        background: rgba(20, 71, 230, 0.08);
+      }
+      .nb-search-panel {
+        position: fixed;
+        top: 72px;
+        right: 24px;
+        width: min(460px, calc(100vw - 24px));
+        max-height: calc(100vh - 96px);
+        display: none;
+        flex-direction: column;
+        background: linear-gradient(180deg, #fffdf7 0%, #ffffff 62%);
+        border: 1px solid rgba(20, 71, 230, 0.16);
+        border-radius: 14px;
+        box-shadow: 0 22px 50px rgba(17, 24, 39, 0.18);
+        overflow: hidden;
+        z-index: 1000;
+      }
+      .nb-search-panel.is-open { display: flex; }
+      .nb-search-head {
+        padding: 14px 14px 10px 14px;
+        background: linear-gradient(180deg, rgba(20, 71, 230, 0.08) 0%, rgba(255, 224, 138, 0.14) 100%);
+        border-bottom: 1px solid rgba(20, 71, 230, 0.1);
+      }
+      .nb-search-head-top {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .nb-search-title {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: 0.02em;
+      }
+      .nb-search-close {
+        margin-left: auto;
+        border: 0;
+        background: rgba(17, 24, 39, 0.06);
+        color: #111827;
+        border-radius: 999px;
+        width: 30px;
+        height: 30px;
+        cursor: pointer;
+      }
+      .nb-search-input-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .nb-search-query {
+        font-family: Inconsolata, monospace;
+      }
+      .nb-search-select {
+        font-size: 12px;
+      }
+      .nb-search-mode-row,
+      .nb-search-filter-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+      .nb-search-mode-label,
+      .nb-search-filter-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: rgba(17, 24, 39, 0.66);
+      }
+      .nb-search-toggle-group {
+        display: inline-flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .nb-search-toggle {
+        border: 1px solid rgba(20, 71, 230, 0.16);
+        background: rgba(255, 255, 255, 0.86);
+        color: #334155;
+        border-radius: 999px;
+        padding: 5px 11px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .nb-search-toggle.is-active {
+        background: #1447e6;
+        border-color: #1447e6;
+        color: #ffffff;
+      }
+      .nb-search-toggle.is-case {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .nb-search-toggle input {
+        margin: 0;
+      }
+      .nb-search-status {
+        padding: 10px 14px;
+        font-size: 12px;
+        color: rgba(17, 24, 39, 0.72);
+        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+        background: rgba(255, 255, 255, 0.72);
+      }
+      .nb-search-status.is-error {
+        color: #b42318;
+        background: rgba(254, 242, 242, 0.92);
+      }
+      .nb-search-results {
+        list-style: none;
+        margin: 0;
+        padding: 8px;
+        overflow-y: auto;
+        min-height: 140px;
+      }
+      .nb-search-result-item {
+        margin: 0;
+        padding: 0;
+      }
+      .nb-search-result {
+        width: 100%;
+        border: 1px solid transparent;
+        background: transparent;
+        text-align: left;
+        padding: 10px 12px;
+        cursor: pointer;
+        border-radius: 10px;
+      }
+      .nb-search-result:hover,
+      .nb-search-result.is-active {
+        background: rgba(20, 71, 230, 0.08);
+        border-color: rgba(20, 71, 230, 0.16);
+      }
+      .nb-search-result-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        margin-bottom: 6px;
+        font-size: 11px;
+        font-family: Inconsolata, monospace;
+      }
+      .nb-search-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(20, 71, 230, 0.08);
+        color: #1447e6;
+      }
+      .nb-search-badge.is-output {
+        background: rgba(232, 86, 0, 0.12);
+        color: #b54708;
+      }
+      .nb-search-badge.is-fuzzy {
+        background: rgba(23, 130, 54, 0.12);
+        color: #178236;
+      }
+      .nb-search-result-line {
+        font-family: Inconsolata, monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #0f172a;
+      }
+      @media (max-width: 720px) {
+        .nb-search-panel {
+          top: 12px;
+          right: 12px;
+          left: 12px;
+          width: auto;
+          max-height: calc(100vh - 24px);
         }
-        window.scrollTo(0, document.body.scrollHeight);
+      }
+    </style>
+    <script>window.NOTEBOOK_KB={{ keybindings }};</script>
+    <script src="{{ $root }}static/shortcuts.js"></script>
+    <script>
+      window.NB_NOTEBOOK_SEARCH = {
+        searchEndpoint: "{{ $root }}api/v1/json/pages/{{ $page.unique }}/search",
+        markdownEditBase: "{{ $root }}markdown/edit/{{ $page.unique }}/",
+        pageId: "{{ $page.unique }}",
+        storageKey: "nb:notebook-search:{{ $page.unique }}",
+        config: {{ search_config }}
+      };
+    </script>
+    <script src="{{ $root }}static/notebook-search.js"></script>
+    <script>
+      function resizeIframe(obj, padding) {
+        try {
+          var h = obj.contentWindow.document.documentElement.scrollHeight;
+          if (h > 20) { obj.style.height = (h + padding) + 'px'; }
+        } catch(e) {}
+      }
+      function handle(obj) {
+        resizeIframe(obj, 20);
+        try {
+          if (obj.contentWindow.location.href.indexOf("/deleted") > 0) {
+            var group = obj.closest('.cell-group');
+            if (group) { group.remove(); } else { obj.parentNode.remove(); }
+            return;
+          }
+        } catch(e) {}
+        setTimeout(function() { resizeIframe(obj, 20); }, 150);
+        setTimeout(function() { resizeIframe(obj, 20); }, 500);
       }
       function output(obj) {
-        obj.style.height = obj.contentWindow.document.documentElement.scrollHeight + 'px';
-        if (obj.contentWindow.location.href.indexOf("/deleted") > 0) {
-          obj.parentNode.parentNode.removeChild(obj.parentNode);
-        } else if (obj.contentWindow.location.href.indexOf("/loaded") > 0) {
-          location.reload()
+        resizeIframe(obj, 10);
+        try {
+          var loc = obj.contentWindow.location.href;
+          if (loc.indexOf("/deleted") > 0) {
+            var group = obj.closest('.cell-group');
+            if (group) { group.remove(); } else { obj.parentNode.remove(); }
+            return;
+          }
+          if (loc.indexOf("/loaded") > 0) {
+            location.reload();
+            return;
+          }
+        } catch(e) {}
+        setTimeout(function() { resizeIframe(obj, 10); }, 150);
+        setTimeout(function() { resizeIframe(obj, 10); }, 500);
+      }
+      window.addEventListener('message', function(e) {
+        if (!e.data || !e.data.type) return;
+        if (e.data.type === 'iframe-resize') {
+          var iframes = document.querySelectorAll('iframe');
+          for (var k = 0; k < iframes.length; k++) {
+            try {
+              if (iframes[k].contentWindow === e.source) {
+                iframes[k].style.height = Math.max(e.data.height, 50) + 'px';
+                break;
+              }
+            } catch(err) {}
+          }
+        } else if (e.data.type === 'iframe-remove') {
+          var iframes = document.querySelectorAll('iframe');
+          for (var k = 0; k < iframes.length; k++) {
+            try {
+              if (iframes[k].contentWindow === e.source) {
+                var group = iframes[k].closest('.cell-group');
+                if (group) { group.remove(); } else { iframes[k].parentNode.remove(); }
+                break;
+              }
+            } catch(err) {}
+          }
+        } else if (e.data.type === 'iframe-reload') {
+          location.reload();
+        } else if (e.data.type === 'iframe-add-cell') {
+          var iframes = document.querySelectorAll('iframe');
+          for (var k = 0; k < iframes.length; k++) {
+            try {
+              if (iframes[k].contentWindow === e.source) {
+                appendOutputCell(iframes[k], e.data);
+                break;
+              }
+            } catch(err) {}
+          }
         }
-        window.scrollTo(0, document.body.scrollHeight);
+      });
+      function appendOutputCell(sourceIframe, data) {
+        if (!data || !data.cellUnique || !data.outputUrl) return;
+        if (document.getElementById('cell-' + data.cellUnique)) return;
+
+        var body = document.getElementById('page-body');
+        if (!body) return;
+
+        var group = document.createElement('div');
+        group.className = 'cell-group';
+        group.id = 'cell-' + data.cellUnique;
+
+        var inputGroup = document.createElement('div');
+        inputGroup.className = 'input-group spacing-top';
+
+        var code = document.createElement('code');
+        code.className = 'input-group-addon spacing-right spacing-left nb-searchable-code';
+        code.id = 'content-' + data.cellUnique;
+        code.setAttribute('data-cell-id', data.cellUnique);
+        code.setAttribute('data-cell-type', data.cellType || '');
+        if (data.cellType === 'script') {
+          code.style.display = 'block';
+          code.style.whiteSpace = 'pre-wrap';
+        }
+        code.textContent = data.content || '';
+        inputGroup.appendChild(code);
+
+        var button = document.createElement('button');
+        button.className = 'btn float-right';
+        button.type = 'button';
+        var icon = document.createElement('i');
+        icon.className = 'icon icon-delete icon-height';
+        icon.textContent = 'Delete';
+        button.appendChild(icon);
+        button.onclick = function() { deleteCell(data.deleteUrl, data.cellUnique); };
+        inputGroup.appendChild(button);
+
+        var outputGroup = document.createElement('div');
+        outputGroup.className = 'input-group spacing-top';
+
+        var iframe = document.createElement('iframe');
+        iframe.id = 'output-' + data.cellUnique;
+        iframe.setAttribute('data-cell-id', data.cellUnique);
+        iframe.setAttribute('frameborder', '0');
+        iframe.setAttribute('marginheight', '0');
+        iframe.setAttribute('marginwidth', '0');
+        iframe.setAttribute('width', '100%');
+        iframe.setAttribute('scrolling', 'no');
+        iframe.setAttribute('onload', 'handle(this)');
+        iframe.className = 'input-group-addon spacing-left md-heigh';
+        iframe.src = data.outputUrl;
+        outputGroup.appendChild(iframe);
+
+        var footer = document.createElement('div');
+        footer.className = 'cell-footer';
+        var footerCount = 0;
+        function appendFooterMetric(label, value) {
+          if (!value) return;
+          var span = document.createElement('span');
+          span.textContent = label + ': ' + value;
+          footer.appendChild(span);
+          footerCount++;
+        }
+        appendFooterMetric('lines', data.lineCount);
+        appendFooterMetric('words', data.wordCount);
+        appendFooterMetric('time', data.actionTime);
+
+        group.appendChild(inputGroup);
+        group.appendChild(outputGroup);
+        if (footerCount > 0) {
+          group.appendChild(footer);
+        }
+
+        var anchor = sourceIframe.closest('.panel');
+        if (anchor && anchor.parentNode === body) {
+          body.insertBefore(group, anchor);
+        } else {
+          body.insertBefore(group, body.childNodes[body.childNodes.length - 2]);
+        }
+      }
+      function deleteCell(url, cellId) {
+        if (!window.confirm("Are you sure you want to delete this cell?")) return;
+        fetch(url, {redirect: 'follow'}).then(function() {
+          var el = document.getElementById('cell-' + cellId);
+          if (el) el.remove();
+        });
+      }
+      function isCommandHelpOpen() {
+        var modal = document.getElementById('command-help');
+        return modal && modal.className.indexOf(' active') >= 0;
       }
       function newmd() {
         var body = document.getElementById("page-body");
@@ -72,8 +437,8 @@
         iframe.setAttribute("frameborder", "0");
         iframe.setAttribute("marginheight", "0");
         iframe.setAttribute("marginwidth", "0");
+        iframe.style.height = "300px";
         iframe.setAttribute("width", "100%");
-        iframe.setAttribute("height", "100%");
         iframe.setAttribute("scrolling", "no");
         iframe.setAttribute("onload", "handle(this)");
         iframe.src = "{{ $root }}markdown/new/{{ $page.unique }}";
@@ -92,7 +457,6 @@
         iframe.setAttribute("marginheight", "0");
         iframe.setAttribute("marginwidth", "0");
         iframe.setAttribute("width", "100%");
-        iframe.setAttribute("height", "110%");
         iframe.setAttribute("scrolling", "no");
         iframe.setAttribute("onload", "output(this)");
         iframe.src = "{{ $root }}output/input/script/{{ $page.unique }}";
@@ -106,11 +470,11 @@
 
         div.className = "panel spacing-top";
         iframe.className = "panel-body no-borders";
+        iframe.style.height = "120px";
         iframe.setAttribute("frameborder", "0");
         iframe.setAttribute("marginheight", "0");
         iframe.setAttribute("marginwidth", "0");
         iframe.setAttribute("width", "100%");
-        iframe.setAttribute("height", "100%");
         iframe.setAttribute("scrolling", "no");
         iframe.setAttribute("onload", "output(this)");
         iframe.src = "{{ $root }}output/input/console/{{ $page.unique }}";
@@ -163,7 +527,7 @@
           detail.className = "modal-detail";
           detail.textContent = details[i].name;
           parent.appendChild(detail);
-          for (var i = 0; i < entries.length; i++) {
+          for (var j = 0; j < entries.length; j++) {
             var entry = document.createElement('li');
             entry.className = "modal-entry";
             detail.appendChild(entry);
@@ -172,24 +536,24 @@
             text.className = "modal-entry-text";
             entry.appendChild(text);
 
-            if ((entries[i].text || "").length > 0) {
+            if ((entries[j].text || "").length > 0) {
               element = document.createElement('span');
               element.className = "modal-name";
-              element.textContent = entries[i].text;
+              element.textContent = entries[j].text;
               text.appendChild(element);
             }
 
-            if ((entries[i].arg_str || "").length > 0) {
+            if ((entries[j].arg_str || "").length > 0) {
               element = document.createElement('span');
               element.className = "modal-args";
-              element.textContent = entries[i].arg_str;
+              element.textContent = entries[j].arg_str;
               text.appendChild(element);
             }
 
-            if ((entries[i].comment || "").length > 0) {
+            if ((entries[j].comment || "").length > 0) {
               element = document.createElement('span');
               element.style.display = "inline-block";
-              element.textContent = " # " + entries[i].comment;
+              element.textContent = " # " + entries[j].comment;
               entry.appendChild(element);
             }
           }
@@ -198,7 +562,7 @@
       function findCmd(element) {
         var dropdown = document.getElementById("dropdown-results");
         var results = document.getElementById("search-results");
-        results.innerHTML = "";
+        results.replaceChildren();
         var tokens = element.value.split(/\s+/);
         for (var i = 0, count = 0; i < rizinCmdsList.length; i++) {
           var key = rizinCmdsList[i];
@@ -230,6 +594,28 @@
         }
       }
 {{ end }}
+      document.addEventListener('DOMContentLoaded', function() {
+        NotebookShortcuts.annotate(document.getElementById('nav-about'), 'about');
+        NotebookShortcuts.annotate(document.getElementById('nav-settings'), 'settings');
+        NotebookShortcuts.annotate(document.getElementById('nav-new-page'), 'new_page');
+        NotebookShortcuts.annotate(document.getElementById('toggle-pipe'), 'toggle_pipe');
+        NotebookShortcuts.annotate(document.getElementById('open-notebook-search'), 'search_notebook');
+        {{ if $pipe }}NotebookShortcuts.annotate(document.getElementById('open-command-line'), 'new_command');{{ end }}
+        NotebookShortcuts.annotate(document.getElementById('open-markdown'), 'new_markdown');
+        NotebookShortcuts.annotate(document.getElementById('open-script'), 'new_script');
+        NotebookShortcuts.bind([
+          { action: 'about', handler: function() { document.getElementById('nav-about').click(); } },
+          { action: 'new_page', handler: function() { document.getElementById('nav-new-page').click(); } },
+          { action: 'settings', handler: function() { document.getElementById('nav-settings').click(); } },
+          { action: 'toggle_pipe', handler: function() { document.getElementById('toggle-pipe').click(); } },
+          { action: 'search_notebook', when: function() { return !isCommandHelpOpen(); }, handler: function() { openNotebookSearch(); } },
+          { action: 'new_markdown', when: function() { return !isCommandHelpOpen(); }, handler: function() { newmd(); } },
+          { action: 'new_script', when: function() { return !isCommandHelpOpen(); }, handler: function() { newsc(); } },
+          { action: 'new_command', when: function() { return !isCommandHelpOpen() && {{ if $pipe }}true{{ else }}false{{ end }}; }, handler: function() { newcm(); } },
+          { action: 'cancel', when: function() { return isNotebookSearchOpen(); }, handler: function() { closeNotebookSearch(); } },
+          { action: 'cancel', when: function() { return isCommandHelpOpen(); }, handler: function() { closeCmdHelp(); } }
+        ]);
+      });
     </script>
   </head>
 <body>
@@ -242,9 +628,26 @@
       <section class="navbar-section">
         <h4 class="title-margin">{{ $page.title }}</h4>
         &nbsp;
-        <a href="{{ $root }}pipe/{{ if $pipe }}close{{ else }}open{{ end }}/{{ $page.unique }}" class="btn{{ if $pipe }} pipe{{ end }}">
+        <a href="{{ $root }}about" class="btn" id="nav-about">About</a>
+        &nbsp;
+        <a href="{{ $root }}settings" class="btn" id="nav-settings">Settings</a>
+        &nbsp;
+        <a href="{{ $root }}new" class="btn" id="nav-new-page">New Page</a>
+        &nbsp;
+        {{ if not $page.hasBinary }}
+        <a href="{{ $root }}edit/{{ $page.unique }}" class="btn btn-error">Attach Binary</a>
+        &nbsp;
+        {{ end }}
+        <a href="{{ $root }}pipe/{{ if $pipe }}close{{ else }}open{{ end }}/{{ $page.unique }}" class="btn{{ if $pipe }} pipe{{ end }}" id="toggle-pipe">
           {{ if $pipe }}Close Pipe{{ else }}Open Pipe{{ end }}
         </a>
+        &nbsp;
+        <a href="{{ $root }}api/v1/json/pages/{{ $page.unique }}/export" class="btn" download>Export .rznb</a>
+        &nbsp;
+        <button class="btn nb-search-toolbar-btn" type="button" id="open-notebook-search">
+          <i class="icon icon-search"></i>
+          <span>Search</span>
+        </button>
         &nbsp;
         <a href="{{ $root }}" class="btn btn-primary">Go Back</a>
       </section>
@@ -253,8 +656,13 @@
       <div class="columns">
         <div class="column">
           <div class="input-group spacing-top">
-            <code class="input-group-addon spacing-right">File: {{ $page.filename }}</code>
+            <code class="input-group-addon spacing-right">File: {{ if $page.filename }}{{ $page.filename }}{{ else }}none attached{{ end }}</code>
           </div>
+          {{ if $page.binaryHash }}
+          <div class="input-group spacing-top">
+            <code class="input-group-addon spacing-right" style="font-size: 11px;">SHA-256: {{ $page.binaryHash }}</code>
+          </div>
+          {{ end }}
         </div>
       </div>
     </section>
@@ -265,38 +673,95 @@
         <div class="column" style="padding-top: 0px" id="page-body">
 {{ range $i, $line := $page.lines }}
 {{ if eq $line.type "markdown" }}
+          <div class="cell-group" id="cell-{{ $line.unique }}">
           <div class="panel spacing-top resizer">
-            <iframe frameborder="0" marginheight="0" marginwidth="0" width="100%" height="100%" scrolling="no" onload="handle(this)" onunload="handle(this)" class="panel-body no-borders md-heigh" src="{{ $root }}markdown/view/{{ $page.unique }}/{{ $line.unique }}"></iframe>
+            <iframe id="markdown-{{ $line.unique }}" data-cell-id="{{ $line.unique }}" frameborder="0" marginheight="0" marginwidth="0" width="100%" scrolling="no" onload="handle(this)" class="panel-body no-borders md-heigh" src="{{ $root }}markdown/view/{{ $page.unique }}/{{ $line.unique }}"></iframe>
+          </div>
+{{ if or $line.lineCount $line.wordCount $line.actionTime }}
+          <div class="cell-footer">
+            {{ if $line.lineCount }}<span>lines: {{ $line.lineCount }}</span>{{ end }}
+            {{ if $line.wordCount }}<span>words: {{ $line.wordCount }}</span>{{ end }}
+            {{ if $line.actionTime }}<span>time: {{ $line.actionTime }}</span>{{ end }}
+          </div>
+{{ end }}
           </div>
 {{ else }}
+          <div class="cell-group" id="cell-{{ $line.unique }}">
           <div class="input-group spacing-top">
 {{ if eq $line.type "script" }}
-            <code style="display: block; white-space: pre-wrap;" class="input-group-addon spacing-right spacing-left">{{ $line.script }}</code>
+            <code id="content-{{ $line.unique }}" data-cell-id="{{ $line.unique }}" data-cell-type="{{ $line.type }}" style="display: block; white-space: pre-wrap;" class="input-group-addon spacing-right spacing-left nb-searchable-code">{{ $line.script }}</code>
 {{ else }}
-            <code class="input-group-addon spacing-right spacing-left">{{ $line.command }}</code>
+            <code id="content-{{ $line.unique }}" data-cell-id="{{ $line.unique }}" data-cell-type="{{ $line.type }}" class="input-group-addon spacing-right spacing-left nb-searchable-code">{{ $line.command }}</code>
 {{ end }}
-            <a class="btn float-right" href="{{ $root }}output/delete/{{ $page.unique }}/{{ $line.unique }}" onclick="confirm_delete(event)">
+            <button class="btn float-right" type="button" onclick="deleteCell('{{ $root }}output/delete/{{ $page.unique }}/{{ $line.unique }}', '{{ $line.unique }}')">
               <i class="icon icon-delete icon-height">Delete</i>
-            </a>
+            </button>
           </div>
           <div class="input-group spacing-top">
-            <iframe id="output-{{ $i }}" frameborder="0" marginheight="0" marginwidth="0" width="100%" height="100%" scrolling="no" onload="handle(this)" class="input-group-addon spacing-left md-heigh" src="{{ $root }}output/view/{{ $page.unique }}/{{ $line.unique }}"></iframe>
+            <iframe id="output-{{ $line.unique }}" data-cell-id="{{ $line.unique }}" frameborder="0" marginheight="0" marginwidth="0" width="100%" scrolling="no" onload="handle(this)" class="input-group-addon spacing-left md-heigh" src="{{ $root }}output/view/{{ $page.unique }}/{{ $line.unique }}"></iframe>
+          </div>
+{{ if or $line.lineCount $line.wordCount $line.actionTime }}
+          <div class="cell-footer">
+            {{ if $line.lineCount }}<span>lines: {{ $line.lineCount }}</span>{{ end }}
+            {{ if $line.wordCount }}<span>words: {{ $line.wordCount }}</span>{{ end }}
+            {{ if $line.actionTime }}<span>time: {{ $line.actionTime }}</span>{{ end }}
+          </div>
+{{ end }}
           </div>
 {{ end }}
 {{ end }}
           <div class="input-group spacing-top" style="margin-top: 10px;">
-            <a class="btn" href="#" onclick="newmd()"><i class="icon icon-message">Markdown</i> Markdown</a>
+            <a class="btn" href="#" onclick="newmd()" id="open-markdown"><i class="icon icon-message">Markdown</i> Markdown</a>
             &nbsp;
-            <a class="btn" href="#" onclick="newsc()"><i class="icon icon-share">Script</i> Script</a>
+            <a class="btn" href="#" onclick="newsc()" id="open-script"><i class="icon icon-share">Script</i> Script</a>
 {{ if $pipe }}
             &nbsp;
-            <a class="btn" href="#" onclick="newcm()"><i class="icon icon-resize-horiz">Command Line</i> Command Line</a>
+            <a class="btn" href="#" onclick="newcm()" id="open-command-line"><i class="icon icon-resize-horiz">Command Line</i> Command Line</a>
             &nbsp;
             <a class="btn" href="#" onclick="openCmdHelp()"><i class="icon icon-search">Help</i> Help</a>
 {{ end }}
           </div>
         </div>
       </div>
+      <aside id="notebook-search" class="nb-search-panel" aria-hidden="true">
+        <div class="nb-search-head">
+          <div class="nb-search-head-top">
+            <h3 class="nb-search-title">Notebook Search</h3>
+            <button class="nb-search-close" type="button" id="close-notebook-search" aria-label="Close notebook search">&times;</button>
+          </div>
+          <div class="nb-search-input-row">
+            <input class="form-input nb-search-query" id="notebook-search-focus" value="" placeholder="Search commands, scripts, outputs, and markdown"/>
+            <select class="form-select nb-search-select" id="notebook-search-surface" aria-label="Search surface">
+              <option value="all">All surfaces</option>
+              <option value="content">Input / source</option>
+              <option value="output">Outputs</option>
+            </select>
+          </div>
+          <div class="nb-search-mode-row">
+            <span class="nb-search-mode-label">Mode</span>
+            <div class="nb-search-toggle-group" id="notebook-search-mode-group">
+              <button class="nb-search-toggle" type="button" data-mode="literal">Literal</button>
+              <button class="nb-search-toggle" type="button" data-mode="regex">Regex</button>
+              <button class="nb-search-toggle" type="button" data-mode="fuzzy">Fuzzy</button>
+            </div>
+          </div>
+          <div class="nb-search-filter-row">
+            <span class="nb-search-filter-label">Filters</span>
+            <select class="form-select nb-search-select" id="notebook-search-cell-type" aria-label="Cell type filter">
+              <option value="all">All cell types</option>
+              <option value="command">Command cells</option>
+              <option value="script">Script cells</option>
+              <option value="markdown">Markdown cells</option>
+            </select>
+            <label class="nb-search-toggle is-case" for="notebook-search-case">
+              <input type="checkbox" id="notebook-search-case" />
+              <span>Case sensitive</span>
+            </label>
+          </div>
+        </div>
+        <div class="nb-search-status" id="notebook-search-status">Search commands, scripts, outputs, and markdown in this notebook.</div>
+        <ul class="nb-search-results" id="notebook-search-results"></ul>
+      </aside>
 {{ if $pipe }}
       <div id="command-help" class="modal modal-box">
         <div class="modal-content modal-search" onclick="" style="z-index: 999999;">

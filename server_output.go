@@ -2,185 +2,285 @@ package main
 
 import (
 	"fmt"
-	"github.com/gin-gonic/gin"
+	"html/template"
+	"net/http"
 	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
+func formatExecutionDuration(duration time.Duration) string {
+	if duration < time.Millisecond {
+		return duration.Round(time.Microsecond).String()
+	}
+	if duration < time.Second {
+		return duration.Round(time.Millisecond).String()
+	}
+	return duration.Round(time.Millisecond).String()
+}
+
+func formatActionTime(unixTime int64) string {
+	if unixTime <= 0 {
+		return ""
+	}
+	return time.Unix(unixTime, 0).Local().Format("15:04")
+}
+
 func serverAddOutput(output *gin.RouterGroup) {
-	output.GET("/deleted", func(c *gin.Context) {
-		c.String(200, "deleted.")
-	})
-	output.GET("/loaded", func(c *gin.Context) {
-		c.String(200, "found.")
-	})
-	output.POST("/script/:unique", func(c *gin.Context) {
-		unique := c.Param("unique")
-		script := c.DefaultPostForm("script", "")
-		if !IsValidNonce(unique) || len(script) < 1 {
-			c.HTML(400, "console-error.tmpl", gin.H{
-				"error": "invalid request",
+
+	// View a rendered output cell.
+	output.GET("/view/*path", func(c *gin.Context) {
+		unique, eunique, ok := parseElementPath(c.Param("path"))
+		if !ok {
+			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
 				"root":  webroot,
+				"error": "invalid path",
 			})
 			return
 		}
 
-		section := notebook.newscript(unique, script)
-		if len(section) < 1 {
-			c.HTML(400, "console-error.tmpl", gin.H{
-				"error": "cannot create section for output.",
-				"root":  webroot,
-			})
-			return
-		}
-
-		rizin := notebook.open(unique, false)
-		jsvm := notebook.jsvm
-		go func(unique, name, script string, jsvm *JavaScript, rizin *Rizin) {
-			output, err := jsvm.exec(script, rizin)
-			if err != nil {
-				errstr := strings.Replace(err.Error(), " at main.NewJavaScript.func1 (native)", "", 1)
-				output += "\nException: " + errstr
+		cell, _ := catalog.GetCell(unique, eunique)
+		var data []byte
+		var lines, words int
+		var actionTime string
+		var visibleOutput string
+		if cell != nil {
+			data = cell.Output
+			visibleOutput = outputVisibleText(string(data))
+			if len(visibleOutput) > 0 {
+				lines = strings.Count(visibleOutput, "\n") + 1
+				words = len(strings.Fields(visibleOutput))
 			}
-			notebook.save([]byte(output), unique, name+".out")
-		}(unique, section, script, jsvm, rizin)
-
-		c.Redirect(302, webroot+"output/check/"+unique+"/"+section)
-	})
-	output.POST("/exec/:unique", func(c *gin.Context) {
-		unique := c.Param("unique")
-		command := c.DefaultPostForm("command", "")
-		if !IsValidNonce(unique) || len(command) < 1 {
-			c.HTML(400, "console-error.tmpl", gin.H{
-				"error": "invalid request",
-				"root":  webroot,
-			})
-			return
-		}
-
-		rizin := notebook.open(unique, false)
-		if rizin == nil {
-			c.HTML(400, "console-error.tmpl", gin.H{
-				"error": "pipe is closed.",
-				"root":  webroot,
-			})
-			return
-		}
-
-		section := notebook.newcmd(unique, command)
-		if len(section) < 1 {
-			c.HTML(400, "console-error.tmpl", gin.H{
-				"error": "cannot create section for output.",
-				"root":  webroot,
-			})
-			return
-		}
-
-		go func(unique, name, command string, rizin *Rizin) {
-			output, err := rizin.exec(command)
-			if err != nil {
-				output = fmt.Sprintf("pipe error: %v", err)
+			if cell.Executed > 0 {
+				actionTime = formatActionTime(cell.Executed)
+			} else {
+				actionTime = formatActionTime(cell.Created)
 			}
-			notebook.save([]byte(output), unique, name+".out")
-		}(unique, section, command, rizin)
+		}
 
-		c.Redirect(302, webroot+"output/check/"+unique+"/"+section)
+		htmlOutput := toHtml(string(data))
+
+		c.HTML(200, "output.tmpl", gin.H{
+			"root":       webroot,
+			"output":     template.HTML(string(htmlOutput)),
+			"raw_output": visibleOutput,
+			"lines":      lines,
+			"words":      words,
+			"actionTime": actionTime,
+		})
 	})
-	output.GET("/check/*path", func(c *gin.Context) {
-		tokens := strings.Split(c.Param("path")[1:], "/")
-		if len(tokens) != 2 || !IsValidNonce(tokens[0]) || !IsValidNonce(tokens[1]) {
-			c.HTML(400, "error.tmpl", gin.H{
+
+	// Delete an output cell.
+	output.GET("/delete/*path", func(c *gin.Context) {
+		unique, eunique, ok := parseElementPath(c.Param("path"))
+		if !ok {
+			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
 				"root":  webroot,
-				"error": "invalid request",
+				"error": "invalid path",
 			})
 			return
 		}
 
-		_, err := notebook.file(tokens[0], tokens[1]+".out")
-		if err != nil {
-			c.HTML(200, "reload.tmpl", gin.H{
-				"root": webroot,
-			})
-			return
-		}
+		catalog.DeleteCell(unique, eunique)
 
-		c.Redirect(302, webroot+"output/loaded")
+		c.Redirect(http.StatusFound, webroot+"output/deleted")
 	})
+
+	// Command line input form (rendered in an iframe).
+	output.GET("/input/console/:unique", func(c *gin.Context) {
+		unique := c.Param("unique")
+		if !IsValidNonce(unique, PageNonceSize) {
+			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
+				"root":  webroot,
+				"error": "invalid page identifier",
+			})
+			return
+		}
+
+		c.HTML(200, "console.tmpl", gin.H{
+			"root":   webroot,
+			"unique": unique,
+		})
+	})
+
+	// Script editor input form (rendered in an iframe).
 	output.GET("/input/script/:unique", func(c *gin.Context) {
 		unique := c.Param("unique")
-		if !IsValidNonce(unique) {
-			c.HTML(400, "error.tmpl", gin.H{
+		if !IsValidNonce(unique, PageNonceSize) {
+			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
 				"root":  webroot,
-				"error": "invalid request",
+				"error": "invalid page identifier",
 			})
 			return
 		}
 
 		c.HTML(200, "script.tmpl", gin.H{
-			"unique": unique,
 			"root":   webroot,
+			"unique": unique,
 		})
 	})
-	output.GET("/input/console/:unique", func(c *gin.Context) {
+
+	// Execute a Rizin command.
+	output.POST("/exec/:unique", func(c *gin.Context) {
 		unique := c.Param("unique")
-		if !IsValidNonce(unique) {
-			c.HTML(400, "error.tmpl", gin.H{
+		if !IsValidNonce(unique, PageNonceSize) {
+			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
 				"root":  webroot,
-				"error": "invalid request",
-			})
-			return
-		}
-		c.HTML(200, "console.tmpl", gin.H{
-			"unique": unique,
-			"root":   webroot,
-		})
-	})
-	output.GET("/view/*path", func(c *gin.Context) {
-		tokens := strings.Split(c.Param("path")[1:], "/")
-		if len(tokens) != 2 || !IsValidNonce(tokens[0]) || !IsValidNonce(tokens[1]) {
-			c.HTML(400, "output.tmpl", gin.H{
-				"root":   webroot,
-				"output": []byte("invalid request"),
+				"error": "invalid page identifier",
 			})
 			return
 		}
 
-		bytes, err := notebook.file(tokens[0], tokens[1]+".out")
+		command := c.PostForm("command")
+		if command == "" {
+			c.Redirect(http.StatusFound, webroot+"output/deleted")
+			return
+		}
+
+		// Get or open the pipe.
+		rz := notebook.open(unique, true)
+		if rz == nil {
+			c.HTML(http.StatusInternalServerError, "console.tmpl", gin.H{
+				"root":    webroot,
+				"unique":  unique,
+				"command": command,
+				"error":   "Failed to open Rizin pipe",
+			})
+			return
+		}
+
+		// Execute the command.
+		started := time.Now()
+		result, err := rz.exec(command)
 		if err != nil {
-			c.HTML(404, "output.tmpl", gin.H{
-				"root":   webroot,
-				"output": []byte("missing output file"),
+			c.HTML(200, "console.tmpl", gin.H{
+				"root":    webroot,
+				"unique":  unique,
+				"command": command,
+				"error":   err.Error(),
 			})
 			return
 		}
 
-		outputStr := fromRawToString(bytes)
-		output, ok := toCsv(outputStr)
-		if !ok {
-			output = toHtml(outputStr)
+		// Create a command cell and save the output in SQLite.
+		eunique := Nonce(ElementNonceSize)
+		if storeErr := catalog.AddCell(unique, eunique, "command", command); storeErr != nil {
+			c.HTML(http.StatusInternalServerError, "console.tmpl", gin.H{
+				"root":    webroot,
+				"unique":  unique,
+				"command": command,
+				"error":   "Failed to create command element",
+			})
+			return
 		}
 
-		c.HTML(200, "output.tmpl", gin.H{
-			"root":   webroot,
-			"output": output,
+		catalog.UpdateCellOutput(unique, eunique, []byte(result))
+		durationText := formatExecutionDuration(time.Since(started))
+		lineCount := 0
+		wordCount := 0
+		if result != "" {
+			lineCount = strings.Count(result, "\n") + 1
+			wordCount = len(strings.Fields(result))
+		}
+		actionTime := time.Now().Local().Format("15:04")
+
+		c.HTML(http.StatusOK, "console.tmpl", gin.H{
+			"root":       webroot,
+			"unique":     unique,
+			"command":    command,
+			"message":    fmt.Sprintf("Command executed in %s", durationText),
+			"lineCount":  lineCount,
+			"wordCount":  wordCount,
+			"actionTime": actionTime,
+			"cellUnique": eunique,
 		})
 	})
-	output.GET("/delete/*path", func(c *gin.Context) {
-		path := c.Param("path")
-		tokens := strings.Split(path[1:], "/")
-		if len(tokens) != 2 || !IsValidNonce(tokens[0]) || !IsValidNonce(tokens[1]) {
-			c.HTML(400, "error.tmpl", gin.H{
+
+	// Execute a JavaScript script.
+	output.POST("/script/:unique", func(c *gin.Context) {
+		unique := c.Param("unique")
+		if !IsValidNonce(unique, PageNonceSize) {
+			c.HTML(http.StatusBadRequest, "error.tmpl", gin.H{
 				"root":  webroot,
-				"error": "invalid request",
+				"error": "invalid page identifier",
 			})
-			return
-		} else if notebook.deleteElem(tokens[0], tokens[1], false) {
-			c.Redirect(302, webroot+"view/"+tokens[0])
 			return
 		}
 
-		c.HTML(400, "error.tmpl", gin.H{
-			"root":  webroot,
-			"error": "invalid request",
+		script := c.PostForm("script")
+		if script == "" {
+			c.Redirect(http.StatusFound, webroot+"output/deleted")
+			return
+		}
+
+		// Get or open the pipe.
+		rz := notebook.open(unique, true)
+
+		// Create a script cell in SQLite.
+		eunique := Nonce(ElementNonceSize)
+		if storeErr := catalog.AddCell(unique, eunique, "script", script); storeErr != nil {
+			c.HTML(http.StatusInternalServerError, "script.tmpl", gin.H{
+				"root":   webroot,
+				"unique": unique,
+				"script": script,
+				"error":  "Failed to create script element",
+			})
+			return
+		}
+
+		// Execute the script. rz may be nil if no pipe is open,
+		// which is handled by the JavaScript engine's rizin.cmd error.
+		started := time.Now()
+		result, err := notebook.jsvm.exec(script, rz)
+
+		if err != nil {
+			catalog.UpdateCellOutput(unique, eunique, []byte(err.Error()))
+			c.HTML(200, "script.tmpl", gin.H{
+				"root":       webroot,
+				"unique":     unique,
+				"script":     script,
+				"error":      err.Error(),
+				"cellUnique": eunique,
+			})
+			return
+		}
+
+		catalog.UpdateCellOutput(unique, eunique, []byte(result))
+		durationText := formatExecutionDuration(time.Since(started))
+		lineCount := 0
+		wordCount := 0
+		if result != "" {
+			lineCount = strings.Count(result, "\n") + 1
+			wordCount = len(strings.Fields(result))
+		}
+		actionTime := time.Now().Local().Format("15:04")
+
+		c.HTML(http.StatusOK, "script.tmpl", gin.H{
+			"root":       webroot,
+			"unique":     unique,
+			"script":     script,
+			"message":    fmt.Sprintf("Script executed in %s", durationText),
+			"lineCount":  lineCount,
+			"wordCount":  wordCount,
+			"actionTime": actionTime,
+			"cellUnique": eunique,
+		})
+	})
+
+	// Pseudo-page for iframe deletion detection.
+	// When the iframe navigates here, the parent page's output() handler
+	// removes the iframe's container div from the DOM.
+	output.GET("/deleted", func(c *gin.Context) {
+		c.String(200, "deleted")
+	})
+
+	// Pseudo-page for parent page reload trigger.
+	// When the iframe navigates here, the parent page's output() handler
+	// calls location.reload() to refresh the entire page.
+	output.GET("/loaded", func(c *gin.Context) {
+		c.HTML(200, "reload.tmpl", gin.H{
+			"root": webroot,
 		})
 	})
 }

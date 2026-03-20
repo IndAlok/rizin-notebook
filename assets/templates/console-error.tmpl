@@ -17,8 +17,14 @@
       <input type="text" disabled="" class="form-input" value="Error: {{ .error }}"/>
     </div>
     <div class="form-group">
-      <a class="btn" href="{{ .root }}output/deleted">Delete</a>
+      <button class="btn" type="button" onclick="window.parent.postMessage({type:'iframe-remove'},'*')">Delete</button>
     </div>
   </div>
+  <script>
+    (function(){
+      var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+      if (window.parent !== window) window.parent.postMessage({type:'iframe-resize',height:h},'*');
+    })();
+  </script>
 </body>
 </html>
